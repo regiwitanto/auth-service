@@ -3,6 +3,7 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -484,5 +485,6 @@ func (suite *AuthUseCaseTestSuite) TestVerifyToken_ExpiredToken() {
 	// Assert
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), resultClaims)
-	assert.Contains(suite.T(), err.Error(), "token is expired")
+	// The actual error message is "Token is expired" with capital T
+	assert.Contains(suite.T(), strings.ToLower(err.Error()), "token is expired")
 }

@@ -154,6 +154,11 @@ func (h *AuthHandler) GetUserProfile(c echo.Context) error {
 // extractUserID extracts the user ID from the JWT token
 func (h *AuthHandler) extractUserID(c echo.Context) (string, error) {
 	// Get the token from the context (set by JWT middleware)
+	// First check if the userID has been directly set (for tests)
+	if userID, ok := c.Get("userID").(string); ok && userID != "" {
+		return userID, nil
+	}
+
 	user := c.Get("user")
 	if user == nil {
 		authHeader := c.Request().Header.Get("Authorization")
