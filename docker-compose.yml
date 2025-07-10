@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth-service
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - SERVER_PORT=8080
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=auth_service
+      - DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=change_this_in_production
+    volumes:
+      - ./:/app
+    networks:
+      - auth-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: auth-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=auth_service
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Add initialization scripts if needed
+      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - auth-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: auth-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    # Use a custom config if needed
+    # command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - redis_data:/data
+      # - ./redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - auth-network
+
+# Use volumes to persist data
+volumes:
+  postgres_data:
+  redis_data:
+
+# Define a custom network
+networks:
+  auth-network:
+    driver: bridge
