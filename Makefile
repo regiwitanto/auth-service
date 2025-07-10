@@ -19,6 +19,16 @@ test:
 	@echo "Running tests..."
 	go test -v ./...
 
+# Run unit tests only
+test-unit:
+	@echo "Running unit tests..."
+	go test -v -short ./...
+
+# Run integration tests only
+test-integration:
+	@echo "Running integration tests..."
+	go test -v -run Integration ./tests/...
+
 # Run tests with coverage
 test-coverage:
 	@echo "Running tests with coverage..."
