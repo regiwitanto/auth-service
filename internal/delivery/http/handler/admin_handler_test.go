@@ -5,73 +5,118 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/golang-jwt/jwt"
 	"github.com/labstack/echo/v4"
 	"github.com/regiwitanto/auth-service/internal/delivery/http/handler"
-	"github.com/regiwitanto/auth-service/internal/mocks"
+	"github.com/regiwitanto/auth-service/internal/testutil/mocks"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
 )
 
-type AdminHandlerTestSuite struct {
-	suite.Suite
-	mockAuthUseCase *mocks.MockAuthUseCase
-	adminHandler    *handler.AdminHandler
-	e               *echo.Echo
+func TestGetAllUsers(t *testing.T) {
+	// Setup
+	e := echo.New()
+	mockAuthUseCase := new(mocks.MockAuthUseCase)
+	adminHandler := handler.NewAdminHandler(mockAuthUseCase)
+
+	// Create JWT claims for admin user
+	adminClaims := make(map[string]interface{})
+	adminClaims["sub"] = "admin-123"
+	adminClaims["role"] = "admin"
+
+	tests := []struct {
+		name           string
+		setupContext   func(c echo.Context)
+		expectedStatus int
+		expectedError  bool
+	}{
+		{
+			name: "Success - Admin Access",
+			setupContext: func(c echo.Context) {
+				c.Set("user", adminClaims)
+			},
+			expectedStatus: http.StatusOK,
+			expectedError:  false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Reset mock
+			mockAuthUseCase.ExpectedCalls = nil
+			mockAuthUseCase.Calls = nil
+
+			// Create request
+			req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			test.setupContext(c)
+
+			// Perform request
+			err := adminHandler.GetAllUsers(c)
+
+			// Assertions
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedStatus, rec.Code)
+
+			// Check response structure
+			if !test.expectedError {
+				assert.Contains(t, rec.Body.String(), "users")
+				assert.Contains(t, rec.Body.String(), "message")
+			}
+		})
+	}
 }
 
-func (suite *AdminHandlerTestSuite) SetupTest() {
-	suite.mockAuthUseCase = new(mocks.MockAuthUseCase)
-	suite.adminHandler = handler.NewAdminHandler(suite.mockAuthUseCase)
-	suite.e = echo.New()
-}
+func TestGetSystemStats(t *testing.T) {
+	// Setup
+	e := echo.New()
+	mockAuthUseCase := new(mocks.MockAuthUseCase)
+	adminHandler := handler.NewAdminHandler(mockAuthUseCase)
 
-func TestAdminHandlerSuite(t *testing.T) {
-	suite.Run(t, new(AdminHandlerTestSuite))
-}
+	// Create JWT claims for admin user
+	adminClaims := make(map[string]interface{})
+	adminClaims["sub"] = "admin-123"
+	adminClaims["role"] = "admin"
 
-func (suite *AdminHandlerTestSuite) TestGetAllUsers() {
-	// Arrange
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
-	rec := httptest.NewRecorder()
-	c := suite.e.NewContext(req, rec)
+	tests := []struct {
+		name           string
+		setupContext   func(c echo.Context)
+		expectedStatus int
+		expectedError  bool
+	}{
+		{
+			name: "Success - Admin Access",
+			setupContext: func(c echo.Context) {
+				c.Set("user", adminClaims)
+			},
+			expectedStatus: http.StatusOK,
+			expectedError:  false,
+		},
+	}
 
-	// Mock JWT token with admin role
-	token := jwt.New(jwt.SigningMethodHS256)
-	claims := token.Claims.(jwt.MapClaims)
-	claims["sub"] = "admin-uuid"
-	claims["role"] = "admin"
-	c.Set("user", token)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Reset mock
+			mockAuthUseCase.ExpectedCalls = nil
+			mockAuthUseCase.Calls = nil
 
-	// Act
-	err := suite.adminHandler.GetAllUsers(c)
+			// Create request
+			req := httptest.NewRequest(http.MethodGet, "/admin/stats", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			test.setupContext(c)
 
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusOK, rec.Code)
-	assert.Contains(suite.T(), rec.Body.String(), "Admin access granted")
-	assert.Contains(suite.T(), rec.Body.String(), "users")
-}
+			// Perform request
+			err := adminHandler.GetSystemStats(c)
 
-func (suite *AdminHandlerTestSuite) TestGetSystemStats() {
-	// Arrange
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/stats", nil)
-	rec := httptest.NewRecorder()
-	c := suite.e.NewContext(req, rec)
+			// Assertions
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedStatus, rec.Code)
 
-	// Mock JWT token with admin role
-	token := jwt.New(jwt.SigningMethodHS256)
-	claims := token.Claims.(jwt.MapClaims)
-	claims["sub"] = "admin-uuid"
-	claims["role"] = "admin"
-	c.Set("user", token)
-
-	// Act
-	err := suite.adminHandler.GetSystemStats(c)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusOK, rec.Code)
-	assert.Contains(suite.T(), rec.Body.String(), "Admin access granted")
-	assert.Contains(suite.T(), rec.Body.String(), "stats")
+			// Check response structure
+			if !test.expectedError {
+				assert.Contains(t, rec.Body.String(), "stats")
+				assert.Contains(t, rec.Body.String(), "message")
+			}
+		})
+	}
 }

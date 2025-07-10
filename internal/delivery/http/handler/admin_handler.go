@@ -7,23 +7,17 @@ import (
 	"github.com/regiwitanto/auth-service/internal/usecase"
 )
 
-// AdminHandler handles HTTP requests related to admin operations
 type AdminHandler struct {
 	authUseCase usecase.AuthUseCase
 }
 
-// NewAdminHandler creates a new admin handler
 func NewAdminHandler(authUseCase usecase.AuthUseCase) *AdminHandler {
 	return &AdminHandler{
 		authUseCase: authUseCase,
 	}
 }
 
-// GetAllUsers handles GET request to retrieve all users
-// Only accessible by admins
 func (h *AdminHandler) GetAllUsers(c echo.Context) error {
-	// In a real implementation, you would call a usecase method to get all users
-	// For now, we'll just return a simple response
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"message": "Admin access granted. Users list would be shown here.",
@@ -35,10 +29,7 @@ func (h *AdminHandler) GetAllUsers(c echo.Context) error {
 	})
 }
 
-// GetSystemStats handles GET request to retrieve system statistics
-// Only accessible by admins
 func (h *AdminHandler) GetSystemStats(c echo.Context) error {
-	// In a real implementation, you would gather actual system stats
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"message": "Admin access granted. System stats:",
 		"stats": map[string]interface{}{

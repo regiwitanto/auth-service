@@ -17,13 +17,15 @@ A microservice-ready authentication service built with Go and Echo framework, fo
 auth-service/
 ├── .env.example             # Example environment variables
 ├── config/                  # Configuration files
-│   ├── config.go            # Configuration loader
-│   └── config.yaml          # Default configuration
+│   ├── config.go            # Configuration loader and test setup
+│   └── config_test.go       # Configuration tests
 ├── internal/                # Internal packages
 │   ├── domain/              # Domain models and interfaces
 │   ├── repository/          # Data access layer
 │   ├── usecase/             # Business logic layer
-│   └── delivery/            # Presentation layer (HTTP handlers)
+│   ├── delivery/            # Presentation layer (HTTP handlers)
+│   └── testutil/            # Testing utilities and mocks
+├── tests/                   # Integration tests
 ├── Dockerfile               # Docker build instructions
 ├── docker-compose.yml       # Docker Compose services definition
 ├── go.mod                   # Go module file
@@ -109,6 +111,28 @@ auth-service/
 - `make docker-build` - Build Docker image
 - `make docker-up` - Start Docker containers
 - `make docker-down` - Stop Docker containers
+
+## Testing
+
+This project follows Go's standard testing conventions with tests co-located with the code they test. The service implements multiple layers of testing:
+
+1. **Unit Tests** - Test individual components in isolation with dependencies mocked
+2. **Integration Tests** - Test interactions between components
+3. **End-to-End Tests** - Test the complete flow through the system
+
+### Running Tests
+
+- `make test` - Run all tests
+- `make test-unit` - Run unit tests only
+- `make test-integration` - Run integration tests only
+- `make test-coverage` - Generate test coverage report
+
+### Test Organization
+
+- Tests are co-located with the code they test
+- Black-box testing is used where appropriate with `_test` package suffix
+- Mocks are provided in `internal/testutil/mocks`
+- Integration tests can be skipped in CI by setting the `CI=true` environment variable
 
 ## License
 

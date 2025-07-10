@@ -3,17 +3,16 @@ package config
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
-	"github.com/spf13/viper"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-// Config stores all configuration of the application.
-// The values are read by viper from a config file or environment variable.
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
@@ -21,12 +20,10 @@ type Config struct {
 	JWT      JWTConfig
 }
 
-// ServerConfig stores server related configuration
 type ServerConfig struct {
 	Port int
 }
 
-// DatabaseConfig stores database connection related configuration
 type DatabaseConfig struct {
 	Host     string
 	Port     int
@@ -36,7 +33,6 @@ type DatabaseConfig struct {
 	SSLMode  string
 }
 
-// RedisConfig stores Redis connection related configuration
 type RedisConfig struct {
 	Host     string
 	Port     int
@@ -44,82 +40,75 @@ type RedisConfig struct {
 	DB       int
 }
 
-// JWTConfig stores JWT related configuration
 type JWTConfig struct {
 	Secret          string
 	AccessTokenExp  time.Duration
 	RefreshTokenExp time.Duration
 }
 
-// LoadConfig reads configuration from file or environment variables.
 func LoadConfig() (config Config, err error) {
 	// Load .env file if it exists
-	godotenv.Load()
+	err = godotenv.Load()
+	if err != nil && !os.IsNotExist(err) {
+		// Only report error if file exists but couldn't be loaded
+		// Not finding .env is ok
+		fmt.Printf("Warning: error loading .env file: %v\n", err)
+	}
 
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath("./config")
-	viper.AddConfigPath(".")
-	viper.AutomaticEnv()
-
-	// Set default values
-	// Server defaults
-	viper.SetDefault("SERVER_PORT", 3007)
+	// Using os.Getenv directly with fallback values
+	// Server configuration
+	serverPort, err := strconv.Atoi(getEnvWithDefault("SERVER_PORT", "3007"))
+	if err != nil {
+		serverPort = 3007
+	}
 
 	// Database defaults
-	viper.SetDefault("DB_HOST", "localhost")
-	viper.SetDefault("DB_PORT", 5432)
-	viper.SetDefault("DB_USER", "postgres")
-	viper.SetDefault("DB_PASSWORD", "postgres")
-	viper.SetDefault("DB_NAME", "auth_service")
-	viper.SetDefault("DB_SSLMODE", "disable")
+	dbPort, err := strconv.Atoi(getEnvWithDefault("DB_PORT", "5432"))
+	if err != nil {
+		dbPort = 5432
+	}
 
 	// Redis defaults
-	viper.SetDefault("REDIS_HOST", "localhost")
-	viper.SetDefault("REDIS_PORT", 6379)
-	viper.SetDefault("REDIS_PASSWORD", "")
-	viper.SetDefault("REDIS_DB", 0)
+	redisPort, err := strconv.Atoi(getEnvWithDefault("REDIS_PORT", "6379"))
+	if err != nil {
+		redisPort = 6379
+	}
 
-	// JWT defaults
-	viper.SetDefault("JWT_SECRET", "super_secret_key")
-	viper.SetDefault("JWT_ACCESS_EXP", "15m")
-	viper.SetDefault("JWT_REFRESH_EXP", "7d")
-
-	// Read configuration
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return config, err
-		}
-		// Config file not found, will use env vars and defaults
+	redisDB, err := strconv.Atoi(getEnvWithDefault("REDIS_DB", "0"))
+	if err != nil {
+		redisDB = 0
 	}
 
 	// Server configuration
-	config.Server.Port = viper.GetInt("SERVER_PORT")
+	// Server configuration is already set above
+
+	// Set config values from environment variables
+	config.Server.Port = serverPort
 
 	// Database configuration
-	config.Database.Host = viper.GetString("DB_HOST")
-	config.Database.Port = viper.GetInt("DB_PORT")
-	config.Database.User = viper.GetString("DB_USER")
-	config.Database.Password = viper.GetString("DB_PASSWORD")
-	config.Database.DBName = viper.GetString("DB_NAME")
-	config.Database.SSLMode = viper.GetString("DB_SSLMODE")
+	config.Database.Host = getEnvWithDefault("DB_HOST", "localhost")
+	config.Database.Port = dbPort
+	config.Database.User = getEnvWithDefault("DB_USER", "postgres")
+	config.Database.Password = getEnvWithDefault("DB_PASSWORD", "postgres")
+	config.Database.DBName = getEnvWithDefault("DB_NAME", "auth_service")
+	config.Database.SSLMode = getEnvWithDefault("DB_SSLMODE", "disable")
 
 	// Redis configuration
-	config.Redis.Host = viper.GetString("REDIS_HOST")
-	config.Redis.Port = viper.GetInt("REDIS_PORT")
-	config.Redis.Password = viper.GetString("REDIS_PASSWORD")
-	config.Redis.DB = viper.GetInt("REDIS_DB")
+	config.Redis.Host = getEnvWithDefault("REDIS_HOST", "localhost")
+	config.Redis.Port = redisPort
+	config.Redis.Password = getEnvWithDefault("REDIS_PASSWORD", "")
+	config.Redis.DB = redisDB
 
 	// JWT configuration
-	config.JWT.Secret = viper.GetString("JWT_SECRET")
+	config.JWT.Secret = getEnvWithDefault("JWT_SECRET", "super_secret_key")
 
-	accessExp, err := time.ParseDuration(viper.GetString("JWT_ACCESS_EXP"))
+	accessExp, err := time.ParseDuration(getEnvWithDefault("JWT_ACCESS_EXP", "15m"))
 	if err != nil {
 		accessExp = 15 * time.Minute
 	}
 	config.JWT.AccessTokenExp = accessExp
 
-	refreshExp, err := time.ParseDuration(viper.GetString("JWT_REFRESH_EXP"))
+	refreshExp, err := time.ParseDuration(getEnvWithDefault("JWT_REFRESH_EXP", "7d"))
 	if err != nil {
 		refreshExp = 7 * 24 * time.Hour // 7 days
 	}
@@ -128,7 +117,6 @@ func LoadConfig() (config Config, err error) {
 	return config, nil
 }
 
-// InitDB initializes the database connection
 func InitDB(config Config) (*gorm.DB, error) {
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		config.Database.Host,
@@ -144,13 +132,9 @@ func InitDB(config Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	// You could add auto-migration here if needed
-	// db.AutoMigrate(&model.User{})
-
 	return db, nil
 }
 
-// InitRedis initializes the Redis client
 func InitRedis(config Config) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", config.Redis.Host, config.Redis.Port),
@@ -161,4 +145,38 @@ func InitRedis(config Config) (*redis.Client, error) {
 	// Test the connection
 	_, err := client.Ping(context.Background()).Result()
 	return client, err
+}
+
+// getEnvWithDefault returns environment variable value or default if not set
+func getEnvWithDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
+}
+
+// LoadTestConfig loads configuration for testing environments
+func LoadTestConfig() (Config, error) {
+	// Set test environment variables if not already set
+	if os.Getenv("TEST_DB_NAME") == "" {
+		os.Setenv("DB_HOST", getEnvWithDefault("TEST_DB_HOST", "localhost"))
+		os.Setenv("DB_PORT", getEnvWithDefault("TEST_DB_PORT", "5432"))
+		os.Setenv("DB_USER", getEnvWithDefault("TEST_DB_USER", "postgres"))
+		os.Setenv("DB_PASSWORD", getEnvWithDefault("TEST_DB_PASSWORD", "postgres"))
+		os.Setenv("DB_NAME", getEnvWithDefault("TEST_DB_NAME", "auth_service_test"))
+		os.Setenv("DB_SSLMODE", getEnvWithDefault("TEST_DB_SSLMODE", "disable"))
+
+		os.Setenv("REDIS_HOST", getEnvWithDefault("TEST_REDIS_HOST", "localhost"))
+		os.Setenv("REDIS_PORT", getEnvWithDefault("TEST_REDIS_PORT", "6379"))
+		os.Setenv("REDIS_PASSWORD", getEnvWithDefault("TEST_REDIS_PASSWORD", ""))
+		os.Setenv("REDIS_DB", getEnvWithDefault("TEST_REDIS_DB", "1"))
+
+		os.Setenv("JWT_SECRET", getEnvWithDefault("TEST_JWT_SECRET", "test_secret_key"))
+		os.Setenv("JWT_ACCESS_EXP", getEnvWithDefault("TEST_JWT_ACCESS_EXP", "5m"))
+		os.Setenv("JWT_REFRESH_EXP", getEnvWithDefault("TEST_JWT_REFRESH_EXP", "1h"))
+	}
+
+	// Use the standard LoadConfig to load the config with the test values
+	return LoadConfig()
 }

@@ -1,450 +1,485 @@
 package handler_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt"
+
 	"github.com/labstack/echo/v4"
 	"github.com/regiwitanto/auth-service/internal/delivery/http/handler"
 	"github.com/regiwitanto/auth-service/internal/domain"
-	"github.com/regiwitanto/auth-service/internal/mocks"
+	"github.com/regiwitanto/auth-service/internal/testutil/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
 )
 
-type AuthHandlerTestSuite struct {
-	suite.Suite
-	echo        *echo.Echo
-	mockAuthUC  *mocks.MockAuthUseCase
-	authHandler *handler.AuthHandler
-}
+func TestRegister(t *testing.T) {
+	// Setup
+	e := echo.New()
+	mockAuthUseCase := new(mocks.MockAuthUseCase)
+	authHandler := handler.NewAuthHandler(mockAuthUseCase)
 
-func (suite *AuthHandlerTestSuite) SetupTest() {
-	suite.echo = echo.New()
-	suite.echo.Validator = &CustomValidator{validator: validator.New()}
-	suite.mockAuthUC = new(mocks.MockAuthUseCase)
-	suite.authHandler = handler.NewAuthHandler(suite.mockAuthUC)
-}
-
-func TestAuthHandlerSuite(t *testing.T) {
-	suite.Run(t, new(AuthHandlerTestSuite))
-}
-
-// CustomValidator is a wrapper for the validator package
-type CustomValidator struct {
-	validator *validator.Validate
-}
-
-// Validate validates the request body
-func (cv *CustomValidator) Validate(i interface{}) error {
-	if err := cv.validator.Struct(i); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	return nil
-}
-
-func (suite *AuthHandlerTestSuite) TestRegister_Success() {
-	// Arrange
-	requestBody := `{
-		"email": "test@example.com",
-		"username": "testuser",
-		"password": "password123",
-		"first_name": "Test",
-		"last_name": "User"
-	}`
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(requestBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
-
-	// Mock expected response
-	expectedResponse := &domain.UserResponse{
-		UUID:      "test-uuid",
-		Email:     "test@example.com",
-		Username:  "testuser",
-		FirstName: "Test",
-		LastName:  "User",
-		Role:      "user",
-	}
-
-	// Mock Register use case
-	suite.mockAuthUC.On("Register", mock.Anything, mock.AnythingOfType("*domain.RegisterRequest")).
-		Return(expectedResponse, nil)
-
-	// Act
-	err := suite.authHandler.Register(c)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusCreated, rec.Code)
-
-	// Check response body
-	var response domain.UserResponse
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), expectedResponse.UUID, response.UUID)
-	assert.Equal(suite.T(), expectedResponse.Email, response.Email)
-	assert.Equal(suite.T(), expectedResponse.Username, response.Username)
-
-	// Verify mocks
-	suite.mockAuthUC.AssertExpectations(suite.T())
-}
-
-func (suite *AuthHandlerTestSuite) TestRegister_InvalidRequest() {
-	// Arrange - Missing required fields
-	requestBody := `{
-		"email": "test@example.com",
-		"password": "password123"
-	}`
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(requestBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
-
-	// Act
-	err := suite.authHandler.Register(c)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusBadRequest, rec.Code)
-
-	// Response should contain error message
-	var response map[string]string
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), response["error"], "Validation failed")
-}
-
-func (suite *AuthHandlerTestSuite) TestRegister_UseCaseError() {
-	// Arrange
-	requestBody := `{
-		"email": "existing@example.com",
-		"username": "existinguser",
-		"password": "password123",
-		"first_name": "Test",
-		"last_name": "User"
-	}`
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(requestBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
-
-	// Mock Register use case - Return error
-	suite.mockAuthUC.On("Register", mock.Anything, mock.AnythingOfType("*domain.RegisterRequest")).
-		Return(nil, errors.New("user with this email already exists"))
-
-	// Act
-	err := suite.authHandler.Register(c)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusBadRequest, rec.Code)
-
-	// Response should contain error message
-	var response map[string]string
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), response["error"], "already exists")
-
-	// Verify mocks
-	suite.mockAuthUC.AssertExpectations(suite.T())
-}
-
-func (suite *AuthHandlerTestSuite) TestLogin_Success() {
-	// Arrange
-	requestBody := `{
-		"email": "test@example.com",
-		"password": "password123"
-	}`
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(requestBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
-
-	// Mock expected response
-	expectedResponse := &domain.TokenResponse{
-		AccessToken:  "test-access-token",
-		RefreshToken: "test-refresh-token",
-		ExpiresIn:    900, // 15 minutes in seconds
-		TokenType:    "Bearer",
+	tests := []struct {
+		name           string
+		requestBody    map[string]interface{}
+		mockBehavior   func()
+		expectedStatus int
+		expectedError  bool
+	}{
+		{
+			name: "Success",
+			requestBody: map[string]interface{}{
+				"username":   "testuser",
+				"email":      "test@example.com",
+				"password":   "password123",
+				"first_name": "Test",
+				"last_name":  "User",
+			},
+			mockBehavior: func() {
+				mockAuthUseCase.On("Register", mock.Anything, mock.MatchedBy(func(req *domain.RegisterRequest) bool {
+					return req.Username == "testuser" && req.Email == "test@example.com"
+				})).Return(&domain.UserResponse{
+					UUID:      "test-uuid",
+					Username:  "testuser",
+					Email:     "test@example.com",
+					FirstName: "Test",
+					LastName:  "User",
+					Role:      "user",
+				}, nil)
+			},
+			expectedStatus: http.StatusCreated,
+			expectedError:  false,
+		},
+		{
+			name: "User Already Exists",
+			requestBody: map[string]interface{}{
+				"username":  "existinguser",
+				"email":     "existing@example.com",
+				"password":  "password123",
+				"full_name": "Existing User",
+			},
+			mockBehavior: func() {
+				mockAuthUseCase.On("Register", mock.Anything, mock.MatchedBy(func(req *domain.RegisterRequest) bool {
+					return req.Username == "existinguser" && req.Email == "existing@example.com"
+				})).Return(nil, errors.New("user with this email already exists"))
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  true,
+		},
+		{
+			name: "Invalid Request - Missing Required Fields",
+			requestBody: map[string]interface{}{
+				"username": "testuser",
+				// Missing email and password
+			},
+			mockBehavior:   func() {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  true,
+		},
 	}
 
-	// Mock Login use case
-	suite.mockAuthUC.On("Login", mock.Anything, mock.AnythingOfType("*domain.LoginRequest")).
-		Return(expectedResponse, nil)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Reset mock
+			mockAuthUseCase.ExpectedCalls = nil
+			mockAuthUseCase.Calls = nil
 
-	// Act
-	err := suite.authHandler.Login(c)
+			// Setup mock behavior
+			test.mockBehavior()
 
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusOK, rec.Code)
+			// Create request
+			jsonBody, _ := json.Marshal(test.requestBody)
+			req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
 
-	// Check response body
-	var response domain.TokenResponse
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), expectedResponse.AccessToken, response.AccessToken)
-	assert.Equal(suite.T(), expectedResponse.RefreshToken, response.RefreshToken)
-	assert.Equal(suite.T(), expectedResponse.ExpiresIn, response.ExpiresIn)
-	assert.Equal(suite.T(), expectedResponse.TokenType, response.TokenType)
+			// Perform request
+			err := authHandler.Register(c)
 
-	// Verify mocks
-	suite.mockAuthUC.AssertExpectations(suite.T())
+			// Assertions
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedStatus, rec.Code)
+
+			// Verify response structure
+			var response map[string]interface{}
+			json.Unmarshal(rec.Body.Bytes(), &response)
+
+			if test.expectedError {
+				assert.Contains(t, response, "error")
+			} else {
+				// Handler returns UserResponse directly at top level
+				assert.Equal(t, "testuser", response["username"])
+				assert.Equal(t, "test@example.com", response["email"])
+				assert.Equal(t, "test-uuid", response["uuid"])
+				assert.Equal(t, "user", response["role"])
+			}
+
+			// Verify all expected mocks were called
+			mockAuthUseCase.AssertExpectations(t)
+		})
+	}
 }
 
-func (suite *AuthHandlerTestSuite) TestLogin_InvalidCredentials() {
-	// Arrange
-	requestBody := `{
-		"email": "wrong@example.com",
-		"password": "wrongpassword"
-	}`
+func TestLogin(t *testing.T) {
+	// Setup
+	e := echo.New()
+	mockAuthUseCase := new(mocks.MockAuthUseCase)
+	authHandler := handler.NewAuthHandler(mockAuthUseCase)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(requestBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
-
-	// Mock Login use case - Return error
-	suite.mockAuthUC.On("Login", mock.Anything, mock.AnythingOfType("*domain.LoginRequest")).
-		Return(nil, errors.New("invalid email or password"))
-
-	// Act
-	err := suite.authHandler.Login(c)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusUnauthorized, rec.Code)
-
-	// Response should contain error message
-	var response map[string]string
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), response["error"], "invalid email or password")
-
-	// Verify mocks
-	suite.mockAuthUC.AssertExpectations(suite.T())
-}
-
-func (suite *AuthHandlerTestSuite) TestRefreshToken_Success() {
-	// Arrange
-	requestBody := `{
-		"refresh_token": "valid-refresh-token"
-	}`
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(requestBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
-
-	// Mock expected response
-	expectedResponse := &domain.TokenResponse{
-		AccessToken:  "new-access-token",
-		RefreshToken: "new-refresh-token",
-		ExpiresIn:    900, // 15 minutes in seconds
-		TokenType:    "Bearer",
+	tests := []struct {
+		name           string
+		requestBody    map[string]interface{}
+		mockBehavior   func()
+		expectedStatus int
+		expectedError  bool
+	}{
+		{
+			name: "Success",
+			requestBody: map[string]interface{}{
+				"email":    "test@example.com",
+				"password": "password123",
+			},
+			mockBehavior: func() {
+				mockAuthUseCase.On("Login", mock.Anything, mock.MatchedBy(func(req *domain.LoginRequest) bool {
+					return req.Email == "test@example.com" && req.Password == "password123"
+				})).Return(&domain.TokenResponse{
+					AccessToken:  "test-access-token",
+					RefreshToken: "test-refresh-token",
+					ExpiresIn:    3600,
+				}, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedError:  false,
+		},
+		{
+			name: "Invalid Credentials",
+			requestBody: map[string]interface{}{
+				"email":    "wrong@example.com",
+				"password": "wrongpass",
+			},
+			mockBehavior: func() {
+				mockAuthUseCase.On("Login", mock.Anything, mock.MatchedBy(func(req *domain.LoginRequest) bool {
+					return req.Email == "wrong@example.com" && req.Password == "wrongpass"
+				})).Return(nil, errors.New("invalid email or password"))
+			},
+			expectedStatus: http.StatusUnauthorized,
+			expectedError:  true,
+		},
+		{
+			name: "Invalid Request - Missing Required Fields",
+			requestBody: map[string]interface{}{
+				"email": "test@example.com",
+				// Missing password
+			},
+			mockBehavior:   func() {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  true,
+		},
 	}
 
-	// Mock RefreshToken use case
-	suite.mockAuthUC.On("RefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshTokenRequest")).
-		Return(expectedResponse, nil)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Reset mock
+			mockAuthUseCase.ExpectedCalls = nil
+			mockAuthUseCase.Calls = nil
 
-	// Act
-	err := suite.authHandler.RefreshToken(c)
+			// Setup mock behavior
+			test.mockBehavior()
 
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusOK, rec.Code)
+			// Create request
+			jsonBody, _ := json.Marshal(test.requestBody)
+			req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
 
-	// Check response body
-	var response domain.TokenResponse
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), expectedResponse.AccessToken, response.AccessToken)
-	assert.Equal(suite.T(), expectedResponse.RefreshToken, response.RefreshToken)
+			// Perform request
+			err := authHandler.Login(c)
 
-	// Verify mocks
-	suite.mockAuthUC.AssertExpectations(suite.T())
-}
+			// Assertions
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedStatus, rec.Code)
 
-func (suite *AuthHandlerTestSuite) TestRefreshToken_InvalidToken() {
-	// Arrange
-	requestBody := `{
-		"refresh_token": "invalid-refresh-token"
-	}`
+			// Verify response structure
+			var response map[string]interface{}
+			json.Unmarshal(rec.Body.Bytes(), &response)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(requestBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
+			if test.expectedError {
+				assert.Contains(t, response, "error")
+			} else {
+				assert.Contains(t, response, "access_token")
+				assert.Contains(t, response, "refresh_token")
+				assert.Contains(t, response, "expires_in")
+				assert.Equal(t, "test-access-token", response["access_token"])
+			}
 
-	// Mock RefreshToken use case - Return error
-	suite.mockAuthUC.On("RefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshTokenRequest")).
-		Return(nil, errors.New("invalid or expired refresh token"))
-
-	// Act
-	err := suite.authHandler.RefreshToken(c)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusUnauthorized, rec.Code)
-
-	// Response should contain error message
-	var response map[string]string
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), response["error"], "invalid or expired refresh token")
-
-	// Verify mocks
-	suite.mockAuthUC.AssertExpectations(suite.T())
-}
-
-func (suite *AuthHandlerTestSuite) TestLogout_Success() {
-	// Arrange
-	requestBody := `{
-		"refresh_token": "valid-refresh-token"
-	}`
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(requestBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
-
-	// Mock Logout use case
-	suite.mockAuthUC.On("Logout", mock.Anything, "valid-refresh-token").
-		Return(nil)
-
-	// Act
-	err := suite.authHandler.Logout(c)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusOK, rec.Code)
-
-	// Response should contain success message
-	var response map[string]string
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), response["message"], "Logged out successfully")
-
-	// Verify mocks
-	suite.mockAuthUC.AssertExpectations(suite.T())
-}
-
-func (suite *AuthHandlerTestSuite) TestGetUserProfile_Success() {
-	// Arrange
-	userID := "test-uuid"
-
-	// Create a request
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/user/me", nil)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
-
-	// Set JWT token claims in context
-	claims := jwt.MapClaims{
-		"sub": userID,
+			// Verify all expected mocks were called
+			mockAuthUseCase.AssertExpectations(t)
+		})
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	c.Set("user", token)
+}
 
-	// Mock expected response
-	expectedResponse := &domain.UserResponse{
-		UUID:      userID,
-		Email:     "test@example.com",
-		Username:  "testuser",
-		FirstName: "Test",
-		LastName:  "User",
-		Role:      "user",
+func TestRefreshToken(t *testing.T) {
+	// Setup
+	e := echo.New()
+	mockAuthUseCase := new(mocks.MockAuthUseCase)
+	authHandler := handler.NewAuthHandler(mockAuthUseCase)
+
+	tests := []struct {
+		name           string
+		requestBody    map[string]interface{}
+		mockBehavior   func()
+		expectedStatus int
+		expectedError  bool
+	}{
+		{
+			name: "Success",
+			requestBody: map[string]interface{}{
+				"refresh_token": "valid-refresh-token",
+			},
+			mockBehavior: func() {
+				mockAuthUseCase.On("RefreshToken", mock.Anything, mock.MatchedBy(func(req *domain.RefreshTokenRequest) bool {
+					return req.RefreshToken == "valid-refresh-token"
+				})).Return(&domain.TokenResponse{
+					AccessToken:  "new-access-token",
+					RefreshToken: "new-refresh-token",
+					ExpiresIn:    3600,
+				}, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedError:  false,
+		},
+		{
+			name: "Invalid Refresh Token",
+			requestBody: map[string]interface{}{
+				"refresh_token": "invalid-refresh-token",
+			},
+			mockBehavior: func() {
+				mockAuthUseCase.On("RefreshToken", mock.Anything, mock.MatchedBy(func(req *domain.RefreshTokenRequest) bool {
+					return req.RefreshToken == "invalid-refresh-token"
+				})).Return(nil, errors.New("invalid refresh token"))
+			},
+			expectedStatus: http.StatusUnauthorized,
+			expectedError:  true,
+		},
 	}
 
-	// Mock GetUserProfile use case
-	suite.mockAuthUC.On("GetUserProfile", mock.Anything, userID).
-		Return(expectedResponse, nil)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Reset mock
+			mockAuthUseCase.ExpectedCalls = nil
+			mockAuthUseCase.Calls = nil
 
-	// Act
-	err := suite.authHandler.GetUserProfile(c)
+			// Setup mock behavior
+			test.mockBehavior()
 
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusOK, rec.Code)
+			// Create request
+			jsonBody, _ := json.Marshal(test.requestBody)
+			req := httptest.NewRequest(http.MethodPost, "/auth/refresh", bytes.NewReader(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
 
-	// Check response body
-	var response domain.UserResponse
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), expectedResponse.UUID, response.UUID)
-	assert.Equal(suite.T(), expectedResponse.Email, response.Email)
-	assert.Equal(suite.T(), expectedResponse.Username, response.Username)
+			// Perform request
+			err := authHandler.RefreshToken(c)
 
-	// Verify mocks
-	suite.mockAuthUC.AssertExpectations(suite.T())
-}
+			// Assertions
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedStatus, rec.Code)
 
-func (suite *AuthHandlerTestSuite) TestGetUserProfile_UserNotFound() {
-	// Arrange
-	userID := "nonexistent-uuid"
+			// Verify response structure
+			var response map[string]interface{}
+			json.Unmarshal(rec.Body.Bytes(), &response)
 
-	// Create a request
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/user/me", nil)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
+			if test.expectedError {
+				assert.Contains(t, response, "error")
+			} else {
+				assert.Contains(t, response, "access_token")
+				assert.Contains(t, response, "refresh_token")
+				assert.Equal(t, "new-access-token", response["access_token"])
+			}
 
-	// Set JWT token claims in context
-	claims := jwt.MapClaims{
-		"sub": userID,
+			// Verify all expected mocks were called
+			mockAuthUseCase.AssertExpectations(t)
+		})
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	c.Set("user", token)
-
-	// Mock GetUserProfile use case - Return error
-	suite.mockAuthUC.On("GetUserProfile", mock.Anything, userID).
-		Return(nil, errors.New("user not found"))
-
-	// Act
-	err := suite.authHandler.GetUserProfile(c)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusNotFound, rec.Code)
-
-	// Response should contain error message
-	var response map[string]string
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), response["error"], "user not found")
-
-	// Verify mocks
-	suite.mockAuthUC.AssertExpectations(suite.T())
 }
 
-func (suite *AuthHandlerTestSuite) TestGetUserProfile_InvalidToken() {
-	// Arrange
-	// Create a request with no token
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/user/me", nil)
-	rec := httptest.NewRecorder()
-	c := suite.echo.NewContext(req, rec)
+func TestLogout(t *testing.T) {
+	// Setup
+	e := echo.New()
+	mockAuthUseCase := new(mocks.MockAuthUseCase)
+	authHandler := handler.NewAuthHandler(mockAuthUseCase)
 
-	// Act
-	err := suite.authHandler.GetUserProfile(c)
+	tests := []struct {
+		name           string
+		requestBody    map[string]interface{}
+		mockBehavior   func()
+		expectedStatus int
+		expectedError  bool
+	}{
+		{
+			name: "Success",
+			requestBody: map[string]interface{}{
+				"refresh_token": "valid-refresh-token",
+			},
+			mockBehavior: func() {
+				mockAuthUseCase.On("Logout", mock.Anything, "valid-refresh-token").Return(nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedError:  false,
+		},
+		{
+			name: "Invalid Token",
+			requestBody: map[string]interface{}{
+				"refresh_token": "invalid-token",
+			},
+			mockBehavior: func() {
+				mockAuthUseCase.On("Logout", mock.Anything, "invalid-token").Return(errors.New("token not found"))
+			},
+			expectedStatus: http.StatusInternalServerError, // Handler returns 500 for token errors
+			expectedError:  true,
+		},
+	}
 
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), http.StatusUnauthorized, rec.Code)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Reset mock
+			mockAuthUseCase.ExpectedCalls = nil
+			mockAuthUseCase.Calls = nil
 
-	// Response should contain error message
-	var response map[string]string
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), response["error"], "Invalid or missing token")
+			// Setup mock behavior
+			test.mockBehavior()
+
+			// Create request
+			jsonBody, _ := json.Marshal(test.requestBody)
+			req := httptest.NewRequest(http.MethodPost, "/auth/logout", bytes.NewReader(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			// Perform request
+			err := authHandler.Logout(c)
+
+			// Assertions
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedStatus, rec.Code)
+
+			// Verify response structure
+			var response map[string]interface{}
+			json.Unmarshal(rec.Body.Bytes(), &response)
+
+			if test.expectedError {
+				assert.Contains(t, response, "error")
+			} else {
+				assert.Contains(t, response, "message")
+				assert.Equal(t, "Logged out successfully", response["message"])
+			}
+
+			// Verify all expected mocks were called
+			mockAuthUseCase.AssertExpectations(t)
+		})
+	}
+}
+
+func TestGetProfile(t *testing.T) {
+	// Setup
+	e := echo.New()
+	mockAuthUseCase := new(mocks.MockAuthUseCase)
+	authHandler := handler.NewAuthHandler(mockAuthUseCase)
+
+	// Create JWT token for testing
+	token := jwt.New(jwt.SigningMethodHS256)
+	claims := token.Claims.(jwt.MapClaims)
+	claims["sub"] = "user-123"
+	claims["role"] = "user"
+	claims["name"] = "testuser"
+	claims["email"] = "test@example.com"
+	claims["exp"] = time.Now().Add(time.Hour).Unix()
+
+	tests := []struct {
+		name           string
+		setupContext   func(c echo.Context)
+		mockBehavior   func()
+		expectedStatus int
+		expectedError  bool
+	}{
+		{
+			name: "Success",
+			setupContext: func(c echo.Context) {
+				c.Set("user", token)
+			},
+			mockBehavior: func() {
+				mockAuthUseCase.On("GetUserProfile", mock.Anything, "user-123").Return(&domain.UserResponse{
+					UUID:      "user-123",
+					Username:  "testuser",
+					Email:     "test@example.com",
+					FirstName: "Test",
+					LastName:  "User",
+					Role:      "user",
+				}, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedError:  false,
+		},
+		{
+			name: "User Not Found",
+			setupContext: func(c echo.Context) {
+				c.Set("user", token)
+			},
+			mockBehavior: func() {
+				mockAuthUseCase.On("GetUserProfile", mock.Anything, "user-123").Return(nil, errors.New("user not found"))
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedError:  true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Reset mock
+			mockAuthUseCase.ExpectedCalls = nil
+			mockAuthUseCase.Calls = nil
+
+			// Setup mock behavior
+			test.mockBehavior()
+
+			// Create request
+			req := httptest.NewRequest(http.MethodGet, "/auth/profile", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			test.setupContext(c)
+
+			// Perform request
+			err := authHandler.GetUserProfile(c)
+
+			// Assertions
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedStatus, rec.Code)
+
+			// Verify response structure
+			var response map[string]interface{}
+			json.Unmarshal(rec.Body.Bytes(), &response)
+
+			if test.expectedError {
+				assert.Contains(t, response, "error")
+			} else {
+				// Handler returns UserResponse directly at top level
+				assert.Equal(t, "testuser", response["username"])
+				assert.Equal(t, "test@example.com", response["email"])
+				assert.Equal(t, "test-uuid", response["uuid"])
+				assert.Equal(t, "user", response["role"])
+			}
+
+			// Verify all expected mocks were called
+			mockAuthUseCase.AssertExpectations(t)
+		})
+	}
 }

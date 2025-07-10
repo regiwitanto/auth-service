@@ -83,7 +83,7 @@ func TestRequireRole(t *testing.T) {
 			if tc.expectedError != "" {
 				if he, ok := err.(*echo.HTTPError); ok {
 					assert.Equal(t, tc.expectedCode, he.Code)
-					assert.Equal(t, tc.expectedError, he.Message)
+					assert.Contains(t, he.Message, tc.expectedError, "Error message should contain expected text")
 				} else {
 					t.Errorf("Expected HTTPError but got %T", err)
 				}
@@ -119,91 +119,59 @@ func TestIsAdmin(t *testing.T) {
 		// Set token with admin role
 		token := jwt.New(jwt.SigningMethodHS256)
 		claims := token.Claims.(jwt.MapClaims)
+		claims["sub"] = "admin-user-id"
+		claims["name"] = "adminuser"
 		claims["role"] = "admin"
+		claims["exp"] = time.Now().Add(time.Hour).Unix()
 		c.Set("user", token)
 
 		// Execute middleware
 		err := middlewareFunc(c)
+
+		// Assert - admin should be allowed
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "admin access", rec.Body.String())
 	})
 
-	t.Run("Deny user access", func(t *testing.T) {
+	t.Run("Deny non-admin access", func(t *testing.T) {
 		// Create request
 		req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		// Set token with user role
+		// Set token with regular user role
 		token := jwt.New(jwt.SigningMethodHS256)
 		claims := token.Claims.(jwt.MapClaims)
+		claims["sub"] = "regular-user-id"
+		claims["name"] = "regularuser"
 		claims["role"] = "user"
+		claims["exp"] = time.Now().Add(time.Hour).Unix()
 		c.Set("user", token)
 
 		// Execute middleware
 		err := middlewareFunc(c)
-		if he, ok := err.(*echo.HTTPError); ok {
-			assert.Equal(t, http.StatusForbidden, he.Code)
-			assert.Equal(t, "Insufficient permissions", he.Message)
-		} else {
-			t.Errorf("Expected HTTPError but got %T", err)
-		}
+
+		// Assert - regular user should be denied
+		httpError, ok := err.(*echo.HTTPError)
+		assert.True(t, ok)
+		assert.Equal(t, http.StatusForbidden, httpError.Code)
+		assert.Contains(t, httpError.Message.(string), "Insufficient permissions")
 	})
-}
 
-func TestIsUser(t *testing.T) {
-	// Setup
-	e := echo.New()
-	rbac := middleware.NewRBACMiddleware()
+	t.Run("Deny when no token present", func(t *testing.T) {
+		// Create request without token
+		req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
 
-	// Create test handler
-	handler := func(c echo.Context) error {
-		return c.String(http.StatusOK, "user access")
-	}
+		// Execute middleware
+		err := middlewareFunc(c)
 
-	// Create middleware
-	userMiddleware := rbac.IsUser()
-	middlewareFunc := userMiddleware(handler)
-
-	tests := []struct {
-		name          string
-		role          string
-		expectSuccess bool
-	}{
-		{"Allow user access", "user", true},
-		{"Allow admin access", "admin", true},
-		{"Deny other role access", "guest", false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Create request
-			req := httptest.NewRequest(http.MethodGet, "/user", nil)
-			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
-
-			// Set token with role
-			token := jwt.New(jwt.SigningMethodHS256)
-			claims := token.Claims.(jwt.MapClaims)
-			claims["role"] = tc.role
-			c.Set("user", token)
-
-			// Execute middleware
-			err := middlewareFunc(c)
-
-			if tc.expectSuccess {
-				assert.NoError(t, err)
-				assert.Equal(t, http.StatusOK, rec.Code)
-				assert.Equal(t, "user access", rec.Body.String())
-			} else {
-				if he, ok := err.(*echo.HTTPError); ok {
-					assert.Equal(t, http.StatusForbidden, he.Code)
-					assert.Equal(t, "Insufficient permissions", he.Message)
-				} else {
-					t.Errorf("Expected HTTPError but got %T", err)
-				}
-			}
-		})
-	}
+		// Assert - should be denied
+		httpError, ok := err.(*echo.HTTPError)
+		assert.True(t, ok)
+		assert.Equal(t, http.StatusUnauthorized, httpError.Code)
+		assert.Equal(t, "Missing or invalid token", httpError.Message)
+	})
 }

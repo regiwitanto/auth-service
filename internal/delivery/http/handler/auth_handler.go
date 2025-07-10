@@ -11,21 +11,17 @@ import (
 	"github.com/regiwitanto/auth-service/internal/usecase"
 )
 
-// AuthHandler handles HTTP requests related to authentication
 type AuthHandler struct {
 	authUseCase usecase.AuthUseCase
 	validator   *validator.Validate
 }
 
-// NewAuthHandler creates a new auth handler
 func NewAuthHandler(authUseCase usecase.AuthUseCase) *AuthHandler {
 	return &AuthHandler{
 		authUseCase: authUseCase,
 		validator:   validator.New(),
 	}
 }
-
-// Register handles user registration
 func (h *AuthHandler) Register(c echo.Context) error {
 	var request domain.RegisterRequest
 	if err := c.Bind(&request); err != nil {

@@ -13,14 +13,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// authUseCase implements the AuthUseCase interface
 type authUseCase struct {
 	userRepo  repository.UserRepository
 	tokenRepo repository.TokenRepository
 	config    config.Config
 }
 
-// NewAuthUseCase creates a new auth use case
 func NewAuthUseCase(
 	userRepo repository.UserRepository,
 	tokenRepo repository.TokenRepository,
@@ -33,7 +31,6 @@ func NewAuthUseCase(
 	}
 }
 
-// Register creates a new user account
 func (uc *authUseCase) Register(ctx context.Context, request *domain.RegisterRequest) (*domain.UserResponse, error) {
 	// Check if user with the same email already exists
 	existingUser, err := uc.userRepo.FindByEmail(ctx, request.Email)

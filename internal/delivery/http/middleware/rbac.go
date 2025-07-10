@@ -7,23 +7,17 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// Role constants
 const (
 	RoleUser  = "user"
 	RoleAdmin = "admin"
 )
 
-// RBACMiddleware provides role-based access control
-type RBACMiddleware struct {
-	// Add any dependencies here if needed
-}
+type RBACMiddleware struct{}
 
-// NewRBACMiddleware creates a new RBAC middleware instance
 func NewRBACMiddleware() *RBACMiddleware {
 	return &RBACMiddleware{}
 }
 
-// RequireRole creates a middleware that restricts access to users with the specified roles
 func (m *RBACMiddleware) RequireRole(roles ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {

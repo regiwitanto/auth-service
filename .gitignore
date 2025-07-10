@@ -5,6 +5,8 @@
 *.so
 *.dylib
 bin/
+auth-service
+auth-service-test
 
 # Test binary, built with `go test -c`
 *.test

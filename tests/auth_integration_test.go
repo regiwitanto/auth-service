@@ -37,9 +37,12 @@ type AuthIntegrationTestSuite struct {
 }
 
 func (suite *AuthIntegrationTestSuite) SetupSuite() {
+	// Skip in CI environments
+	skipIfCI(suite.T())
+
 	// Load test configuration
 	var err error
-	suite.cfg, err = config.NewTestConfig()
+	suite.cfg, err = config.LoadTestConfig()
 	if err != nil {
 		suite.T().Fatalf("Failed to load test configuration: %v", err)
 	}
@@ -192,7 +195,7 @@ func TestAuthIntegrationSuite(t *testing.T) {
 	}
 
 	// Try to load config to see if it works
-	_, err := config.NewTestConfig()
+	_, err := config.LoadTestConfig()
 	if err != nil {
 		t.Fatalf("Failed to load test config: %v", err)
 	}

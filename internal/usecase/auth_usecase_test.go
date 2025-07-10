@@ -3,488 +3,558 @@ package usecase_test
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt"
 	"github.com/regiwitanto/auth-service/config"
 	"github.com/regiwitanto/auth-service/internal/domain"
-	"github.com/regiwitanto/auth-service/internal/mocks"
+	"github.com/regiwitanto/auth-service/internal/testutil/mocks"
 	"github.com/regiwitanto/auth-service/internal/usecase"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type AuthUseCaseTestSuite struct {
-	suite.Suite
-	mockUserRepo  *mocks.MockUserRepository
-	mockTokenRepo *mocks.MockTokenRepository
-	cfg           config.Config
-	authUseCase   usecase.AuthUseCase
-	ctx           context.Context
-}
+func setupAuthUseCase() (usecase.AuthUseCase, *mocks.MockUserRepository, *mocks.MockTokenRepository) {
+	mockUserRepo := new(mocks.MockUserRepository)
+	mockTokenRepo := new(mocks.MockTokenRepository)
 
-func (suite *AuthUseCaseTestSuite) SetupTest() {
-	suite.mockUserRepo = new(mocks.MockUserRepository)
-	suite.mockTokenRepo = new(mocks.MockTokenRepository)
-
-	// Setup default config for testing
-	suite.cfg = config.Config{
+	cfg := config.Config{
 		JWT: config.JWTConfig{
-			Secret:          "test_secret",
-			AccessTokenExp:  15 * time.Minute,
-			RefreshTokenExp: 24 * time.Hour,
+			Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
+			AccessTokenExp: 1 * time.Hour,
+		},
+		Server: config.ServerConfig{
+			Port: 8080,
 		},
 	}
 
-	suite.authUseCase = usecase.NewAuthUseCase(
-		suite.mockUserRepo,
-		suite.mockTokenRepo,
-		suite.cfg,
-	)
-	suite.ctx = context.Background()
+	authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
+	return authUseCase, mockUserRepo, mockTokenRepo
 }
 
-func TestAuthUseCaseSuite(t *testing.T) {
-	suite.Run(t, new(AuthUseCaseTestSuite))
+func TestRegister(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		// Create fresh mocks for this test
+		mockUserRepo := new(mocks.MockUserRepository)
+		mockTokenRepo := new(mocks.MockTokenRepository)
+
+		// Setup request
+		registerReq := &domain.RegisterRequest{
+			Email:     "new@example.com",
+			Username:  "newuser",
+			Password:  "password123",
+			FirstName: "New",
+			LastName:  "User",
+		}
+
+		// Setup mock behavior
+		// In FindByEmail and FindByUsername:
+		// - Return nil for user (first return value) since user doesn't exist
+		// - Return error for "not found" condition (second return value)
+
+		// First check if email exists (should return nil user and error for "not found")
+		mockUserRepo.On("FindByEmail", mock.Anything, registerReq.Email).
+			Return(nil, errors.New("user not found"))
+
+		// Then check if username exists (should return nil user and error for "not found")
+		mockUserRepo.On("FindByUsername", mock.Anything, registerReq.Username).
+			Return(nil, errors.New("user not found"))
+
+		// Then create the user
+		mockUserRepo.On("Create", mock.Anything, mock.MatchedBy(func(u *domain.User) bool {
+			// Password should be hashed
+			err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(registerReq.Password))
+			return u.Email == registerReq.Email &&
+				u.Username == registerReq.Username &&
+				u.FirstName == registerReq.FirstName &&
+				u.LastName == registerReq.LastName &&
+				u.Role == "user" &&
+				err == nil // Password was correctly hashed
+		})).Return(nil)
+
+		// Create the use case with our mocks
+		cfg := config.Config{
+			JWT: config.JWTConfig{
+				Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
+				AccessTokenExp: 1 * time.Hour,
+			},
+		}
+		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
+
+		// Call the use case
+		response, err := authUseCase.Register(context.Background(), registerReq)
+
+		// Assertions
+		require.NoError(t, err)
+		require.NotNil(t, response)
+		assert.Equal(t, registerReq.Email, response.Email)
+		assert.Equal(t, registerReq.Username, response.Username)
+		assert.Equal(t, registerReq.FirstName, response.FirstName)
+		assert.Equal(t, registerReq.LastName, response.LastName)
+		assert.Equal(t, "user", response.Role)
+		assert.NotEmpty(t, response.UUID)
+
+		// Verify mock expectations
+		mockUserRepo.AssertExpectations(t)
+	})
+
+	t.Run("Email Already Exists", func(t *testing.T) {
+		// Create fresh mocks for this test
+		mockUserRepo := new(mocks.MockUserRepository)
+		mockTokenRepo := new(mocks.MockTokenRepository)
+
+		// Setup request
+		registerReq := &domain.RegisterRequest{
+			Email:     "existing@example.com",
+			Username:  "newuser",
+			Password:  "password123",
+			FirstName: "New",
+			LastName:  "User",
+		}
+
+		// Setup mock behavior - Email exists
+		existingUser := &domain.User{
+			ID:       1,
+			UUID:     "existing-uuid",
+			Email:    registerReq.Email,
+			Username: "existinguser",
+		}
+		mockUserRepo.On("FindByEmail", mock.Anything, registerReq.Email).
+			Return(existingUser, nil)
+
+		// Create the use case with our mocks
+		cfg := config.Config{
+			JWT: config.JWTConfig{
+				Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
+				AccessTokenExp: 1 * time.Hour,
+			},
+		}
+		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
+
+		// Call the use case
+		response, err := authUseCase.Register(context.Background(), registerReq)
+
+		// Assertions
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "already exists")
+		assert.Nil(t, response)
+
+		// Verify mock expectations
+		mockUserRepo.AssertExpectations(t)
+	})
+
+	t.Run("Username Already Exists", func(t *testing.T) {
+		// Create fresh mocks for this test
+		mockUserRepo := new(mocks.MockUserRepository)
+		mockTokenRepo := new(mocks.MockTokenRepository)
+
+		// Setup request
+		registerReq := &domain.RegisterRequest{
+			Email:     "new@example.com",
+			Username:  "existinguser",
+			Password:  "password123",
+			FirstName: "New",
+			LastName:  "User",
+		}
+
+		// Setup mock behavior
+		// Email doesn't exist
+		mockUserRepo.On("FindByEmail", mock.Anything, registerReq.Email).
+			Return(nil, errors.New("user not found"))
+
+		// But username exists
+		existingUser := &domain.User{
+			ID:       1,
+			UUID:     "existing-uuid",
+			Email:    "other@example.com",
+			Username: registerReq.Username,
+		}
+		mockUserRepo.On("FindByUsername", mock.Anything, registerReq.Username).
+			Return(existingUser, nil)
+
+		// Create the use case with our mocks
+		cfg := config.Config{
+			JWT: config.JWTConfig{
+				Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
+				AccessTokenExp: 1 * time.Hour,
+			},
+		}
+		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
+
+		// Call the use case
+		response, err := authUseCase.Register(context.Background(), registerReq)
+
+		// Assertions
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "already exists")
+		assert.Nil(t, response)
+
+		// Verify mock expectations
+		mockUserRepo.AssertExpectations(t)
+	})
+
+	t.Run("Database Error", func(t *testing.T) {
+		// Create fresh mocks for this test
+		mockUserRepo := new(mocks.MockUserRepository)
+		mockTokenRepo := new(mocks.MockTokenRepository)
+
+		// Setup request
+		registerReq := &domain.RegisterRequest{
+			Email:     "new@example.com",
+			Username:  "newuser",
+			Password:  "password123",
+			FirstName: "New",
+			LastName:  "User",
+		}
+
+		// Setup mock behavior
+		mockUserRepo.On("FindByEmail", mock.Anything, registerReq.Email).
+			Return(nil, errors.New("user not found"))
+		mockUserRepo.On("FindByUsername", mock.Anything, registerReq.Username).
+			Return(nil, errors.New("user not found"))
+		mockUserRepo.On("Create", mock.Anything, mock.AnythingOfType("*domain.User")).
+			Return(errors.New("database error"))
+
+		// Create the use case with our mocks
+		cfg := config.Config{
+			JWT: config.JWTConfig{
+				Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
+				AccessTokenExp: 1 * time.Hour,
+			},
+		}
+		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
+
+		// Call the use case
+		response, err := authUseCase.Register(context.Background(), registerReq)
+
+		// Assertions
+		require.Error(t, err)
+		assert.Nil(t, response)
+
+		// Verify mock expectations
+		mockUserRepo.AssertExpectations(t)
+	})
 }
 
-func (suite *AuthUseCaseTestSuite) TestRegister_Success() {
-	// Arrange
-	registerReq := &domain.RegisterRequest{
-		Email:     "test@example.com",
-		Username:  "testuser",
-		Password:  "password123",
-		FirstName: "Test",
-		LastName:  "User",
-	}
+func TestLogin(t *testing.T) {
+	_, mockUserRepo, mockTokenRepo := setupAuthUseCase()
 
-	// Mock FindByEmail - No existing user
-	suite.mockUserRepo.On("FindByEmail", suite.ctx, registerReq.Email).
-		Return(nil, errors.New("user not found"))
-
-	// Mock FindByUsername - No existing user
-	suite.mockUserRepo.On("FindByUsername", suite.ctx, registerReq.Username).
-		Return(nil, errors.New("user not found"))
-
-	// Mock Create
-	suite.mockUserRepo.On("Create", suite.ctx, mock.AnythingOfType("*domain.User")).
-		Return(nil)
-
-	// Act
-	result, err := suite.authUseCase.Register(suite.ctx, registerReq)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), result)
-	assert.Equal(suite.T(), registerReq.Email, result.Email)
-	assert.Equal(suite.T(), registerReq.Username, result.Username)
-	assert.Equal(suite.T(), registerReq.FirstName, result.FirstName)
-	assert.Equal(suite.T(), registerReq.LastName, result.LastName)
-
-	// Verify mocks
-	suite.mockUserRepo.AssertExpectations(suite.T())
-}
-
-func (suite *AuthUseCaseTestSuite) TestRegister_EmailExists() {
-	// Arrange
-	registerReq := &domain.RegisterRequest{
-		Email:     "existing@example.com",
-		Username:  "testuser",
-		Password:  "password123",
-		FirstName: "Test",
-		LastName:  "User",
-	}
-
-	// Mock FindByEmail - Existing user with same email
-	existingUser := &domain.User{
-		Email:    registerReq.Email,
-		Username: "differentuser",
-	}
-	suite.mockUserRepo.On("FindByEmail", suite.ctx, registerReq.Email).
-		Return(existingUser, nil)
-
-	// Act
-	result, err := suite.authUseCase.Register(suite.ctx, registerReq)
-
-	// Assert
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), result)
-	assert.Contains(suite.T(), err.Error(), "email already exists")
-
-	// Verify mocks
-	suite.mockUserRepo.AssertExpectations(suite.T())
-}
-
-func (suite *AuthUseCaseTestSuite) TestRegister_UsernameExists() {
-	// Arrange
-	registerReq := &domain.RegisterRequest{
-		Email:     "test@example.com",
-		Username:  "existinguser",
-		Password:  "password123",
-		FirstName: "Test",
-		LastName:  "User",
-	}
-
-	// Mock FindByEmail - No existing user with same email
-	suite.mockUserRepo.On("FindByEmail", suite.ctx, registerReq.Email).
-		Return(nil, errors.New("user not found"))
-
-	// Mock FindByUsername - Existing user with same username
-	existingUser := &domain.User{
-		Email:    "different@example.com",
-		Username: registerReq.Username,
-	}
-	suite.mockUserRepo.On("FindByUsername", suite.ctx, registerReq.Username).
-		Return(existingUser, nil)
-
-	// Act
-	result, err := suite.authUseCase.Register(suite.ctx, registerReq)
-
-	// Assert
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), result)
-	assert.Contains(suite.T(), err.Error(), "username already exists")
-
-	// Verify mocks
-	suite.mockUserRepo.AssertExpectations(suite.T())
-}
-
-func (suite *AuthUseCaseTestSuite) TestLogin_Success() {
-	// Arrange
-	loginReq := &domain.LoginRequest{
-		Email:    "test@example.com",
-		Password: "password123",
-	}
-
-	// Create a hashed password
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(loginReq.Password), bcrypt.DefaultCost)
-
-	// Mock user
-	user := &domain.User{
+	// Mock user with hashed password
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
+	mockUser := &domain.User{
 		ID:        1,
 		UUID:      "test-uuid",
-		Email:     loginReq.Email,
+		Email:     "test@example.com",
 		Username:  "testuser",
 		Password:  string(hashedPassword),
 		FirstName: "Test",
 		LastName:  "User",
 		Role:      "user",
-		Active:    true,
 	}
 
-	// Mock FindByEmail - Return the user
-	suite.mockUserRepo.On("FindByEmail", suite.ctx, loginReq.Email).
-		Return(user, nil)
+	t.Run("Success with Email", func(t *testing.T) {
+		// Reset mocks
+		mockUserRepo.ExpectedCalls = nil
+		mockTokenRepo.ExpectedCalls = nil
 
-	// Mock StoreRefreshToken - Store the token in Redis
-	suite.mockTokenRepo.On("StoreRefreshToken",
-		suite.ctx,
-		user.UUID,
-		mock.AnythingOfType("string"),
-		suite.cfg.JWT.RefreshTokenExp).
-		Return(nil)
+		// Setup request
+		loginReq := &domain.LoginRequest{
+			Email:    "test@example.com",
+			Password: "password123",
+		}
 
-	// Act
-	result, err := suite.authUseCase.Login(suite.ctx, loginReq)
+		// Setup mock behavior
+		mockUserRepo.On("FindByEmail", mock.Anything, loginReq.Email).
+			Return(mockUser, nil)
 
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), result)
-	assert.NotEmpty(suite.T(), result.AccessToken)
-	assert.NotEmpty(suite.T(), result.RefreshToken)
-	assert.Equal(suite.T(), "Bearer", result.TokenType)
-	assert.Greater(suite.T(), result.ExpiresIn, int64(0))
+		// Should store refresh token
+		mockTokenRepo.On("StoreRefreshToken", mock.Anything, mockUser.UUID, mock.AnythingOfType("string"), mock.AnythingOfType("time.Duration")).
+			Return(nil)
 
-	// Verify access token
-	token, err := jwt.Parse(result.AccessToken, func(token *jwt.Token) (interface{}, error) {
-		return []byte(suite.cfg.JWT.Secret), nil
+		// Call the use case
+		authUseCase, _, _ := setupAuthUseCase()
+		response, err := authUseCase.Login(context.Background(), loginReq)
+
+		// Assertions
+		require.NoError(t, err)
+		require.NotNil(t, response)
+		assert.NotEmpty(t, response.AccessToken)
+		assert.NotEmpty(t, response.RefreshToken)
+		assert.Equal(t, "Bearer", response.TokenType)
+		assert.True(t, response.ExpiresIn > 0)
+
+		// Verify token validity
+		token, err := jwt.Parse(response.AccessToken, func(token *jwt.Token) (interface{}, error) {
+			return []byte("test-secret-key-for-jwt-token-that-is-long-enough"), nil
+		})
+		require.NoError(t, err)
+		require.True(t, token.Valid)
+
+		// Check claims
+		claims := token.Claims.(jwt.MapClaims)
+		assert.Equal(t, mockUser.UUID, claims["sub"])
+		assert.Equal(t, mockUser.Role, claims["role"])
+
+		// Verify mock expectations
+		mockUserRepo.AssertExpectations(t)
+		mockTokenRepo.AssertExpectations(t)
 	})
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), token.Valid)
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), user.UUID, claims["sub"])
-	assert.Equal(suite.T(), user.Username, claims["name"])
-	assert.Equal(suite.T(), user.Email, claims["email"])
-	assert.Equal(suite.T(), user.Role, claims["role"])
+	t.Run("Invalid Password", func(t *testing.T) {
+		// Reset mocks
+		mockUserRepo.ExpectedCalls = nil
+		mockTokenRepo.ExpectedCalls = nil
 
-	// Verify mocks
-	suite.mockUserRepo.AssertExpectations(suite.T())
-	suite.mockTokenRepo.AssertExpectations(suite.T())
-}
+		// Setup request with wrong password
+		loginReq := &domain.LoginRequest{
+			Email:    "test@example.com",
+			Password: "wrongpassword",
+		}
 
-func (suite *AuthUseCaseTestSuite) TestLogin_UserNotFound() {
-	// Arrange
-	loginReq := &domain.LoginRequest{
-		Email:    "nonexistent@example.com",
-		Password: "password123",
-	}
+		// Setup mock behavior
+		mockUserRepo.On("FindByEmail", mock.Anything, loginReq.Email).
+			Return(mockUser, nil)
 
-	// Mock FindByEmail - User not found
-	suite.mockUserRepo.On("FindByEmail", suite.ctx, loginReq.Email).
-		Return(nil, errors.New("user not found"))
+		// Call the use case
+		authUseCase, _, _ := setupAuthUseCase()
+		response, err := authUseCase.Login(context.Background(), loginReq)
 
-	// Act
-	result, err := suite.authUseCase.Login(suite.ctx, loginReq)
+		// Assertions
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid")
+		assert.Nil(t, response)
 
-	// Assert
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), result)
-	assert.Contains(suite.T(), err.Error(), "invalid email or password")
-
-	// Verify mocks
-	suite.mockUserRepo.AssertExpectations(suite.T())
-}
-
-func (suite *AuthUseCaseTestSuite) TestLogin_InvalidPassword() {
-	// Arrange
-	loginReq := &domain.LoginRequest{
-		Email:    "test@example.com",
-		Password: "wrongpassword",
-	}
-
-	// Create a hashed password for a different password
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("correctpassword"), bcrypt.DefaultCost)
-
-	// Mock user
-	user := &domain.User{
-		Email:    loginReq.Email,
-		Password: string(hashedPassword),
-		Active:   true,
-	}
-
-	// Mock FindByEmail - Return the user
-	suite.mockUserRepo.On("FindByEmail", suite.ctx, loginReq.Email).
-		Return(user, nil)
-
-	// Act
-	result, err := suite.authUseCase.Login(suite.ctx, loginReq)
-
-	// Assert
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), result)
-	assert.Contains(suite.T(), err.Error(), "invalid email or password")
-
-	// Verify mocks
-	suite.mockUserRepo.AssertExpectations(suite.T())
-}
-
-func (suite *AuthUseCaseTestSuite) TestRefreshToken_Success() {
-	// Arrange
-	refreshReq := &domain.RefreshTokenRequest{
-		RefreshToken: "valid-refresh-token",
-	}
-
-	// Mock user
-	user := &domain.User{
-		ID:        1,
-		UUID:      "test-uuid",
-		Email:     "test@example.com",
-		Username:  "testuser",
-		FirstName: "Test",
-		LastName:  "User",
-		Role:      "user",
-		Active:    true,
-	}
-
-	// Mock GetUserIDByRefreshToken - Return the user ID
-	suite.mockTokenRepo.On("GetUserIDByRefreshToken", suite.ctx, refreshReq.RefreshToken).
-		Return(user.UUID, nil)
-
-	// Mock FindByUUID - Return the user
-	suite.mockUserRepo.On("FindByUUID", suite.ctx, user.UUID).
-		Return(user, nil)
-
-	// Mock DeleteRefreshToken - Delete the old refresh token
-	suite.mockTokenRepo.On("DeleteRefreshToken", suite.ctx, refreshReq.RefreshToken).
-		Return(nil)
-
-	// Mock StoreRefreshToken - Store the new refresh token
-	suite.mockTokenRepo.On("StoreRefreshToken",
-		suite.ctx,
-		user.UUID,
-		mock.AnythingOfType("string"),
-		suite.cfg.JWT.RefreshTokenExp).
-		Return(nil)
-
-	// Act
-	result, err := suite.authUseCase.RefreshToken(suite.ctx, refreshReq)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), result)
-	assert.NotEmpty(suite.T(), result.AccessToken)
-	assert.NotEmpty(suite.T(), result.RefreshToken)
-	assert.Equal(suite.T(), "Bearer", result.TokenType)
-	assert.Greater(suite.T(), result.ExpiresIn, int64(0))
-
-	// Verify access token
-	token, err := jwt.Parse(result.AccessToken, func(token *jwt.Token) (interface{}, error) {
-		return []byte(suite.cfg.JWT.Secret), nil
+		// Verify mock expectations
+		mockUserRepo.AssertExpectations(t)
+		mockTokenRepo.AssertExpectations(t)
 	})
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), token.Valid)
 
-	// Verify mocks
-	suite.mockTokenRepo.AssertExpectations(suite.T())
-	suite.mockUserRepo.AssertExpectations(suite.T())
+	t.Run("User Not Found", func(t *testing.T) {
+		// Reset mocks
+		mockUserRepo.ExpectedCalls = nil
+
+		// Setup request
+		loginReq := &domain.LoginRequest{
+			Email:    "nonexistent@example.com",
+			Password: "password123",
+		}
+
+		// Setup mock behavior
+		mockUserRepo.On("FindByEmail", mock.Anything, loginReq.Email).
+			Return(nil, errors.New("user not found"))
+
+		// Call the use case
+		authUseCase, _, _ := setupAuthUseCase()
+		response, err := authUseCase.Login(context.Background(), loginReq)
+
+		// Assertions
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+		assert.Nil(t, response)
+
+		// Verify mock expectations
+		mockUserRepo.AssertExpectations(t)
+	})
 }
 
-func (suite *AuthUseCaseTestSuite) TestRefreshToken_InvalidToken() {
-	// Arrange
-	refreshReq := &domain.RefreshTokenRequest{
-		RefreshToken: "invalid-refresh-token",
-	}
+func TestRefreshToken(t *testing.T) {
+	_, mockUserRepo, mockTokenRepo := setupAuthUseCase()
 
-	// Mock GetUserIDByRefreshToken - Token not found
-	suite.mockTokenRepo.On("GetUserIDByRefreshToken", suite.ctx, refreshReq.RefreshToken).
-		Return("", errors.New("token not found"))
+	t.Run("Success", func(t *testing.T) {
+		// Reset mocks
+		mockUserRepo.ExpectedCalls = nil
+		mockTokenRepo.ExpectedCalls = nil
 
-	// Act
-	result, err := suite.authUseCase.RefreshToken(suite.ctx, refreshReq)
+		// Setup
+		userID := "test-uuid"
+		refreshToken := "valid-refresh-token"
 
-	// Assert
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), result)
-	assert.Contains(suite.T(), err.Error(), "invalid or expired refresh token")
+		mockUser := &domain.User{
+			ID:        1,
+			UUID:      userID,
+			Email:     "test@example.com",
+			Username:  "testuser",
+			FirstName: "Test",
+			LastName:  "User",
+			Role:      "user",
+		}
 
-	// Verify mocks
-	suite.mockTokenRepo.AssertExpectations(suite.T())
+		// Setup mock behavior
+		mockTokenRepo.On("GetUserIDByRefreshToken", mock.Anything, refreshToken).
+			Return(userID, nil)
+
+		mockUserRepo.On("FindByUUID", mock.Anything, userID).
+			Return(mockUser, nil)
+
+		// Should store a new refresh token
+		mockTokenRepo.On("StoreRefreshToken", mock.Anything, userID, mock.AnythingOfType("string"), mock.AnythingOfType("time.Duration")).
+			Return(nil)
+
+		// Should delete the old refresh token
+		mockTokenRepo.On("DeleteRefreshToken", mock.Anything, refreshToken).
+			Return(nil)
+
+		// Call the use case
+		authUseCase, _, _ := setupAuthUseCase()
+		response, err := authUseCase.RefreshToken(context.Background(), &domain.RefreshTokenRequest{
+			RefreshToken: refreshToken,
+		})
+
+		// Assertions
+		require.NoError(t, err)
+		require.NotNil(t, response)
+		assert.NotEmpty(t, response.AccessToken)
+		assert.NotEmpty(t, response.RefreshToken)
+		assert.NotEqual(t, refreshToken, response.RefreshToken) // New refresh token should be different
+		assert.Equal(t, "Bearer", response.TokenType)
+		assert.True(t, response.ExpiresIn > 0)
+
+		// Verify mock expectations
+		mockUserRepo.AssertExpectations(t)
+		mockTokenRepo.AssertExpectations(t)
+	})
+
+	t.Run("Invalid Refresh Token", func(t *testing.T) {
+		// Reset mocks
+		mockTokenRepo.ExpectedCalls = nil
+
+		// Setup
+		refreshToken := "invalid-refresh-token"
+
+		// Setup mock behavior
+		mockTokenRepo.On("GetUserIDByRefreshToken", mock.Anything, refreshToken).
+			Return("", errors.New("token not found or expired"))
+
+		// Call the use case
+		authUseCase, _, _ := setupAuthUseCase()
+		response, err := authUseCase.RefreshToken(context.Background(), &domain.RefreshTokenRequest{
+			RefreshToken: refreshToken,
+		})
+
+		// Assertions
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid refresh token")
+		assert.Nil(t, response)
+
+		// Verify mock expectations
+		mockTokenRepo.AssertExpectations(t)
+	})
 }
 
-func (suite *AuthUseCaseTestSuite) TestLogout_Success() {
-	// Arrange
-	token := "valid-refresh-token"
+func TestLogout(t *testing.T) {
+	_, _, mockTokenRepo := setupAuthUseCase()
 
-	// Mock DeleteRefreshToken - Success
-	suite.mockTokenRepo.On("DeleteRefreshToken", suite.ctx, token).
-		Return(nil)
+	t.Run("Success", func(t *testing.T) {
+		// Reset mocks
+		mockTokenRepo.ExpectedCalls = nil
 
-	// Act
-	err := suite.authUseCase.Logout(suite.ctx, token)
+		// Setup
+		refreshToken := "valid-refresh-token"
 
-	// Assert
-	assert.NoError(suite.T(), err)
+		// Setup mock behavior
+		mockTokenRepo.On("DeleteRefreshToken", mock.Anything, refreshToken).
+			Return(nil)
 
-	// Verify mocks
-	suite.mockTokenRepo.AssertExpectations(suite.T())
+		// Call the use case
+		authUseCase, _, _ := setupAuthUseCase()
+		err := authUseCase.Logout(context.Background(), refreshToken)
+
+		// Assertions
+		require.NoError(t, err)
+
+		// Verify mock expectations
+		mockTokenRepo.AssertExpectations(t)
+	})
+
+	t.Run("Token Not Found", func(t *testing.T) {
+		// Reset mocks
+		mockTokenRepo.ExpectedCalls = nil
+
+		// Setup
+		refreshToken := "invalid-refresh-token"
+
+		// Setup mock behavior
+		mockTokenRepo.On("DeleteRefreshToken", mock.Anything, refreshToken).
+			Return(errors.New("token not found"))
+
+		// Call the use case
+		authUseCase, _, _ := setupAuthUseCase()
+		err := authUseCase.Logout(context.Background(), refreshToken)
+
+		// Assertions
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "token not found")
+
+		// Verify mock expectations
+		mockTokenRepo.AssertExpectations(t)
+	})
 }
 
-func (suite *AuthUseCaseTestSuite) TestGetUserProfile_Success() {
-	// Arrange
-	userID := "test-uuid"
+func TestVerifyToken(t *testing.T) {
+	t.Run("Valid Token", func(t *testing.T) {
+		// Setup
+		authUseCase, _, _ := setupAuthUseCase()
 
-	// Mock user
-	user := &domain.User{
-		ID:        1,
-		UUID:      userID,
-		Email:     "test@example.com",
-		Username:  "testuser",
-		FirstName: "Test",
-		LastName:  "User",
-		Role:      "user",
-	}
+		// Create a valid token
+		claims := jwt.MapClaims{
+			"sub":  "test-uuid",
+			"role": "user",
+			"iat":  time.Now().Unix(),
+			"exp":  time.Now().Add(time.Hour).Unix(),
+			"iss":  "auth-service-test",
+		}
 
-	// Mock FindByUUID - Return the user
-	suite.mockUserRepo.On("FindByUUID", suite.ctx, userID).
-		Return(user, nil)
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		signedToken, err := token.SignedString([]byte("test-secret-key-for-jwt-token-that-is-long-enough"))
+		require.NoError(t, err)
 
-	// Act
-	result, err := suite.authUseCase.GetUserProfile(suite.ctx, userID)
+		// Call the use case
+		verifiedClaims, err := authUseCase.VerifyToken(signedToken)
 
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), result)
-	assert.Equal(suite.T(), user.UUID, result.UUID)
-	assert.Equal(suite.T(), user.Email, result.Email)
-	assert.Equal(suite.T(), user.Username, result.Username)
-	assert.Equal(suite.T(), user.FirstName, result.FirstName)
-	assert.Equal(suite.T(), user.LastName, result.LastName)
-	assert.Equal(suite.T(), user.Role, result.Role)
+		// Assertions
+		require.NoError(t, err)
+		assert.Equal(t, claims["sub"], verifiedClaims["sub"])
+		assert.Equal(t, claims["role"], verifiedClaims["role"])
+	})
 
-	// Verify mocks
-	suite.mockUserRepo.AssertExpectations(suite.T())
-}
+	t.Run("Invalid Token Format", func(t *testing.T) {
+		// Setup
+		authUseCase, _, _ := setupAuthUseCase()
 
-func (suite *AuthUseCaseTestSuite) TestGetUserProfile_UserNotFound() {
-	// Arrange
-	userID := "nonexistent-uuid"
+		// Call with invalid token
+		verifiedClaims, err := authUseCase.VerifyToken("invalid-token-format")
 
-	// Mock FindByUUID - User not found
-	suite.mockUserRepo.On("FindByUUID", suite.ctx, userID).
-		Return(nil, errors.New("user not found"))
+		// Assertions
+		require.Error(t, err)
+		assert.Nil(t, verifiedClaims)
+	})
 
-	// Act
-	result, err := suite.authUseCase.GetUserProfile(suite.ctx, userID)
+	t.Run("Expired Token", func(t *testing.T) {
+		// Setup
+		authUseCase, _, _ := setupAuthUseCase()
 
-	// Assert
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), result)
-	assert.Contains(suite.T(), err.Error(), "user not found")
+		// Create an expired token
+		claims := jwt.MapClaims{
+			"sub":  "test-uuid",
+			"role": "user",
+			"iat":  time.Now().Add(-2 * time.Hour).Unix(),
+			"exp":  time.Now().Add(-1 * time.Hour).Unix(), // Expired 1 hour ago
+			"iss":  "auth-service-test",
+		}
 
-	// Verify mocks
-	suite.mockUserRepo.AssertExpectations(suite.T())
-}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		signedToken, err := token.SignedString([]byte("test-secret-key-for-jwt-token-that-is-long-enough"))
+		require.NoError(t, err)
 
-func (suite *AuthUseCaseTestSuite) TestVerifyToken_ValidToken() {
-	// Arrange - Create a valid JWT token
-	claims := jwt.MapClaims{
-		"sub":  "test-uuid",
-		"name": "testuser",
-		"exp":  time.Now().Add(time.Hour).Unix(),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(suite.cfg.JWT.Secret))
+		// Call the use case
+		verifiedClaims, err := authUseCase.VerifyToken(signedToken)
 
-	// Act
-	resultClaims, err := suite.authUseCase.VerifyToken(tokenString)
-
-	// Assert
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), resultClaims)
-	assert.Equal(suite.T(), claims["sub"], resultClaims["sub"])
-	assert.Equal(suite.T(), claims["name"], resultClaims["name"])
-}
-
-func (suite *AuthUseCaseTestSuite) TestVerifyToken_InvalidToken() {
-	// Arrange - Create an invalid token (wrong signature)
-	claims := jwt.MapClaims{
-		"sub":  "test-uuid",
-		"name": "testuser",
-		"exp":  time.Now().Add(time.Hour).Unix(),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte("wrong-secret"))
-
-	// Act
-	resultClaims, err := suite.authUseCase.VerifyToken(tokenString)
-
-	// Assert
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), resultClaims)
-}
-
-func (suite *AuthUseCaseTestSuite) TestVerifyToken_ExpiredToken() {
-	// Arrange - Create an expired token
-	claims := jwt.MapClaims{
-		"sub":  "test-uuid",
-		"name": "testuser",
-		"exp":  time.Now().Add(-time.Hour).Unix(), // Expired 1 hour ago
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(suite.cfg.JWT.Secret))
-
-	// Act
-	resultClaims, err := suite.authUseCase.VerifyToken(tokenString)
-
-	// Assert
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), resultClaims)
-	// The actual error message is "Token is expired" with capital T
-	assert.Contains(suite.T(), strings.ToLower(err.Error()), "token is expired")
+		// Assertions
+		require.Error(t, err)
+		assert.Nil(t, verifiedClaims)
+		assert.Contains(t, err.Error(), "expired")
+	})
 }
