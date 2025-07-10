@@ -8,6 +8,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/regiwitanto/auth-service/config"
 	"github.com/regiwitanto/auth-service/internal/delivery/http/handler"
+	customMiddleware "github.com/regiwitanto/auth-service/internal/delivery/http/middleware"
 	"github.com/regiwitanto/auth-service/internal/repository"
 	"github.com/regiwitanto/auth-service/internal/usecase"
 )
@@ -48,6 +49,10 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authUseCase)
+	adminHandler := handler.NewAdminHandler(authUseCase)
+
+	// Initialize middleware
+	rbacMiddleware := customMiddleware.NewRBACMiddleware()
 
 	// Routes
 	// Health check
@@ -61,19 +66,30 @@ func main() {
 	// API routes
 	api := e.Group("/api/v1")
 
-	// Auth routes
+	// Auth routes (public)
 	auth := api.Group("/auth")
 	auth.POST("/register", authHandler.Register)
 	auth.POST("/login", authHandler.Login)
 	auth.POST("/refresh", authHandler.RefreshToken)
 	auth.POST("/logout", authHandler.Logout)
 
-	// Protected routes example
-	user := api.Group("/user")
-	user.Use(middleware.JWTWithConfig(middleware.JWTConfig{
+	// JWT middleware for protected routes
+	jwtMiddleware := middleware.JWTWithConfig(middleware.JWTConfig{
 		SigningKey: []byte(cfg.JWT.Secret),
-	}))
+	})
+
+	// User routes (authenticated users only)
+	user := api.Group("/user")
+	user.Use(jwtMiddleware)
+	user.Use(rbacMiddleware.IsUser())
 	user.GET("/me", authHandler.GetUserProfile)
+
+	// Admin routes (admin only)
+	admin := api.Group("/admin")
+	admin.Use(jwtMiddleware)
+	admin.Use(rbacMiddleware.IsAdmin())
+	admin.GET("/users", adminHandler.GetAllUsers)
+	admin.GET("/stats", adminHandler.GetSystemStats)
 
 	// Start server
 	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", cfg.Server.Port)))
