@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
+	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/regiwitanto/auth-service/config"
 	"github.com/regiwitanto/auth-service/internal/delivery/http/handler"
@@ -37,9 +39,6 @@ type AuthIntegrationTestSuite struct {
 }
 
 func (suite *AuthIntegrationTestSuite) SetupSuite() {
-	// Skip in CI environments
-	skipIfCI(suite.T())
-
 	// Load test configuration
 	var err error
 	suite.cfg, err = config.LoadTestConfig()
@@ -187,15 +186,29 @@ func (suite *AuthIntegrationTestSuite) runMigrations() error {
 	return suite.db.AutoMigrate(&domain.User{})
 }
 
-// Removed duplicated LoadTestConfig function since it's now defined in config/config_test.go
+// skipIfCI skips the test if running in a CI environment
+func skipIfCI(t *testing.T) {
+	if os.Getenv("CI") != "" || os.Getenv("SKIP_INTEGRATION") != "" {
+		t.Skip("Skipping integration test in CI environment")
+	}
+}
 
 func TestAuthIntegrationSuite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration tests in short mode")
 	}
 
+	// Skip if CI environment
+	skipIfCI(t)
+
+	// Load the .env.test file explicitly for integration tests
+	err := godotenv.Load(".env.test")
+	if err != nil {
+		t.Logf("Warning: .env.test file not found, using default test values: %v", err)
+	}
+
 	// Try to load config to see if it works
-	_, err := config.LoadTestConfig()
+	_, err = config.LoadTestConfig()
 	if err != nil {
 		t.Fatalf("Failed to load test config: %v", err)
 	}

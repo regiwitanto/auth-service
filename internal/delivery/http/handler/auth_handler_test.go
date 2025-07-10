@@ -45,7 +45,7 @@ func TestRegister(t *testing.T) {
 				mockAuthUseCase.On("Register", mock.Anything, mock.MatchedBy(func(req *domain.RegisterRequest) bool {
 					return req.Username == "testuser" && req.Email == "test@example.com"
 				})).Return(&domain.UserResponse{
-					UUID:      "test-uuid",
+					UUID:      "user-123",
 					Username:  "testuser",
 					Email:     "test@example.com",
 					FirstName: "Test",
@@ -59,10 +59,11 @@ func TestRegister(t *testing.T) {
 		{
 			name: "User Already Exists",
 			requestBody: map[string]interface{}{
-				"username":  "existinguser",
-				"email":     "existing@example.com",
-				"password":  "password123",
-				"full_name": "Existing User",
+				"username":   "existinguser",
+				"email":      "existing@example.com",
+				"password":   "password123",
+				"first_name": "Existing",
+				"last_name":  "User",
 			},
 			mockBehavior: func() {
 				mockAuthUseCase.On("Register", mock.Anything, mock.MatchedBy(func(req *domain.RegisterRequest) bool {
@@ -117,7 +118,7 @@ func TestRegister(t *testing.T) {
 				// Handler returns UserResponse directly at top level
 				assert.Equal(t, "testuser", response["username"])
 				assert.Equal(t, "test@example.com", response["email"])
-				assert.Equal(t, "test-uuid", response["uuid"])
+				assert.Equal(t, "user-123", response["uuid"])
 				assert.Equal(t, "user", response["role"])
 			}
 
@@ -395,7 +396,6 @@ func TestGetProfile(t *testing.T) {
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
 	authHandler := handler.NewAuthHandler(mockAuthUseCase)
 
-	// Create JWT token for testing
 	token := jwt.New(jwt.SigningMethodHS256)
 	claims := token.Claims.(jwt.MapClaims)
 	claims["sub"] = "user-123"
@@ -474,7 +474,7 @@ func TestGetProfile(t *testing.T) {
 				// Handler returns UserResponse directly at top level
 				assert.Equal(t, "testuser", response["username"])
 				assert.Equal(t, "test@example.com", response["email"])
-				assert.Equal(t, "test-uuid", response["uuid"])
+				assert.Equal(t, "user-123", response["uuid"])
 				assert.Equal(t, "user", response["role"])
 			}
 
