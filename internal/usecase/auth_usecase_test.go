@@ -27,7 +27,7 @@ func setupAuthUseCase() (usecase.AuthUseCase, *mocks.MockUserRepository, *mocks.
 			AccessTokenExp: 1 * time.Hour,
 		},
 		Server: config.ServerConfig{
-			Port: 8080,
+			Port: 3007,
 		},
 	}
 
