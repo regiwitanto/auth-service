@@ -7,6 +7,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/regiwitanto/auth-service/config"
 	"github.com/regiwitanto/auth-service/internal/delivery/http/handler"
 	customMiddleware "github.com/regiwitanto/auth-service/internal/delivery/http/middleware"
@@ -60,6 +61,7 @@ func main() {
 		Strategy:  "ip",
 	})
 
+	// Health check endpoint
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
 			"status":  "OK",
@@ -74,11 +76,11 @@ func main() {
 	auth.POST("/login", authHandler.Login, loginRateLimiter.Limit())
 	auth.POST("/refresh", authHandler.RefreshToken, authRateLimiter.Limit())
 	auth.POST("/logout", authHandler.Logout, authRateLimiter.Limit())
-
 	// JWT middleware for protected routes
-	jwtMiddleware := middleware.JWTWithConfig(middleware.JWTConfig{
+	jwtConfig := echojwt.Config{
 		SigningKey: []byte(cfg.JWT.Secret),
-	})
+	}
+	jwtMiddleware := echojwt.WithConfig(jwtConfig)
 
 	user := api.Group("/user")
 	user.Use(jwtMiddleware)

@@ -17,6 +17,16 @@ func NewAdminHandler(authUseCase usecase.AuthUseCase) *AdminHandler {
 	}
 }
 
+// GetAllUsers returns a list of all users
+// @Summary Get all users
+// @Description Get a list of all users in the system (admin access required)
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Success 200 {object} map[string]interface{} "List of users"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Router /admin/users [get]
 func (h *AdminHandler) GetAllUsers(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -29,6 +39,16 @@ func (h *AdminHandler) GetAllUsers(c echo.Context) error {
 	})
 }
 
+// GetSystemStats returns system statistics
+// @Summary Get system stats
+// @Description Get system statistics and metrics (admin access required)
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Success 200 {object} map[string]interface{} "System statistics"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Router /admin/stats [get]
 func (h *AdminHandler) GetSystemStats(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"message": "Admin access granted. System stats:",
