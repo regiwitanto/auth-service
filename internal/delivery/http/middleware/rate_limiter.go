@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -100,7 +101,15 @@ func (rl *RateLimiter) Limit() echo.MiddlewareFunc {
 			limiter := rl.getLimiter(identifier)
 
 			if !limiter.Allow() {
-				return echo.NewHTTPError(http.StatusTooManyRequests, "Rate limit exceeded")
+				// Get the current limit information
+				limit := limiter.Limit()
+				// Convert to requests per minute for a more user-friendly message
+				ratePerMinute := int(float64(limit) * 60)
+
+				return echo.NewHTTPError(
+					http.StatusTooManyRequests,
+					fmt.Sprintf("Rate limit exceeded. Maximum %d requests per minute allowed.", ratePerMinute),
+				)
 			}
 
 			return next(c)

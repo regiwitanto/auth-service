@@ -14,10 +14,12 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	JWT      JWTConfig
+	Server      ServerConfig
+	Database    DatabaseConfig
+	Redis       RedisConfig
+	JWT         JWTConfig
+	Environment string
+	RateLimit   RateLimitConfig
 }
 
 type ServerConfig struct {
@@ -46,6 +48,14 @@ type JWTConfig struct {
 	RefreshTokenExp time.Duration
 }
 
+type RateLimitConfig struct {
+	Enabled             bool
+	LoginRequestsPerMin int
+	LoginBurstSize      int
+	APIRequestsPerMin   int
+	APIBurstSize        int
+}
+
 func LoadConfig() (config Config, err error) {
 	// Load .env file if it exists
 	err = godotenv.Load()
@@ -57,9 +67,9 @@ func LoadConfig() (config Config, err error) {
 
 	// Using os.Getenv directly with fallback values
 	// Server configuration
-	serverPort, err := strconv.Atoi(getEnvWithDefault("SERVER_PORT", "3007"))
+	serverPort, err := strconv.Atoi(getEnvWithDefault("SERVER_PORT", "8080"))
 	if err != nil {
-		serverPort = 3007
+		serverPort = 8080
 	}
 
 	// Database defaults
@@ -113,6 +123,36 @@ func LoadConfig() (config Config, err error) {
 		refreshExp = 7 * 24 * time.Hour // 7 days
 	}
 	config.JWT.RefreshTokenExp = refreshExp
+
+	// Environment configuration
+	config.Environment = getEnvWithDefault("APP_ENV", "development")
+
+	// Rate limit configuration
+	config.RateLimit.Enabled = getEnvWithDefault("RATE_LIMIT_ENABLED", "true") == "true"
+
+	loginReqPerMin, err := strconv.Atoi(getEnvWithDefault("RATE_LIMIT_LOGIN_REQUESTS", "10"))
+	if err != nil {
+		loginReqPerMin = 10
+	}
+	config.RateLimit.LoginRequestsPerMin = loginReqPerMin
+
+	loginBurst, err := strconv.Atoi(getEnvWithDefault("RATE_LIMIT_LOGIN_BURST", "3"))
+	if err != nil {
+		loginBurst = 3
+	}
+	config.RateLimit.LoginBurstSize = loginBurst
+
+	apiReqPerMin, err := strconv.Atoi(getEnvWithDefault("RATE_LIMIT_API_REQUESTS", "60"))
+	if err != nil {
+		apiReqPerMin = 60
+	}
+	config.RateLimit.APIRequestsPerMin = apiReqPerMin
+
+	apiBurst, err := strconv.Atoi(getEnvWithDefault("RATE_LIMIT_API_BURST", "10"))
+	if err != nil {
+		apiBurst = 10
+	}
+	config.RateLimit.APIBurstSize = apiBurst
 
 	return config, nil
 }

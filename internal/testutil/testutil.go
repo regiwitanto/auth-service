@@ -11,7 +11,7 @@ import (
 func CreateTestConfig() (*config.Config, error) {
 	return &config.Config{
 		Server: config.ServerConfig{
-			Port: 3007,
+			Port: 8080,
 		},
 		Database: config.DatabaseConfig{
 			Host:     "localhost",

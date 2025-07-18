@@ -1,32 +1,32 @@
 version: '3.8'
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: auth-service
-    restart: unless-stopped
-    ports:
-      - "3007:3007"
-    depends_on:
-      - postgres
-      - redis
-    environment:
-      - SERVER_PORT=3007
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=auth_service
-      - DB_SSLMODE=disable
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - JWT_SECRET=change_this_in_production
-    volumes:
-      - ./:/app
-    networks:
-      - auth-network
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: auth-service
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8080:8080"
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   environment:
+  #     - SERVER_PORT=8080
+  #     - DB_HOST=postgres
+  #     - DB_PORT=5432
+  #     - DB_USER=postgres
+  #     - DB_PASSWORD=postgres
+  #     - DB_NAME=auth_service
+  #     - DB_SSLMODE=disable
+  #     - REDIS_HOST=redis
+  #     - REDIS_PORT=6379
+  #     - JWT_SECRET=change_this_in_production
+  #   volumes:
+  #     - ./:/app
+  #   networks:
+  #     - auth-network
 
   postgres:
     image: postgres:15-alpine

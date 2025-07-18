@@ -33,7 +33,7 @@ COPY --from=builder /bin/auth-service .
 COPY --from=builder /app/config/config.yaml ./config/
 
 # Expose the application port
-EXPOSE 3007
+EXPOSE 8080
 
 # Run the application
 ENTRYPOINT ["./auth-service"]

@@ -3,6 +3,7 @@
 # Environment variables
 APP_NAME=auth-service
 BUILD_DIR=bin
+DB_URL=postgres://postgres:postgres@localhost:5432/auth_service?sslmode=disable
 
 # Build the application
 build:

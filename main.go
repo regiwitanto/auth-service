@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/regiwitanto/auth-service/config"
 	"github.com/regiwitanto/auth-service/internal/delivery/http/handler"
 	customMiddleware "github.com/regiwitanto/auth-service/internal/delivery/http/middleware"
@@ -47,19 +47,46 @@ func main() {
 
 	rbacMiddleware := customMiddleware.NewRBACMiddleware()
 
-	authRateLimiter := customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
-		Requests:  60,
-		Window:    time.Minute,
-		BurstSize: 10,
-		Strategy:  "ip",
-	})
+	var authRateLimiter, loginRateLimiter *customMiddleware.RateLimiter
 
-	loginRateLimiter := customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
-		Requests:  10,
-		Window:    time.Minute,
-		BurstSize: 3,
-		Strategy:  "ip",
-	})
+	// Configure rate limiters based on environment
+	if !cfg.RateLimit.Enabled || cfg.Environment == "development" {
+		// In development mode or when rate limiting is disabled, use very permissive settings
+		authRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
+			Requests:  1000,
+			Window:    time.Minute,
+			BurstSize: 50,
+			Strategy:  "ip",
+		})
+
+		loginRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
+			Requests:  1000,
+			Window:    time.Minute,
+			BurstSize: 50,
+			Strategy:  "ip",
+		})
+
+		fmt.Println("Rate limiting is set to development mode (1000 req/min)")
+	} else {
+		// In production, use the configured settings
+		authRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
+			Requests:  cfg.RateLimit.APIRequestsPerMin,
+			Window:    time.Minute,
+			BurstSize: cfg.RateLimit.APIBurstSize,
+			Strategy:  "ip",
+		})
+
+		loginRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
+			Requests:  cfg.RateLimit.LoginRequestsPerMin,
+			Window:    time.Minute,
+			BurstSize: cfg.RateLimit.LoginBurstSize,
+			Strategy:  "ip",
+		})
+
+		fmt.Printf("Rate limiting is set to production mode (Login: %d req/min, API: %d req/min)\n",
+			cfg.RateLimit.LoginRequestsPerMin,
+			cfg.RateLimit.APIRequestsPerMin)
+	}
 
 	// Health check endpoint
 	e.GET("/health", func(c echo.Context) error {
@@ -72,13 +99,27 @@ func main() {
 	api := e.Group("/api/v1")
 
 	auth := api.Group("/auth")
-	auth.POST("/register", authHandler.Register, authRateLimiter.Limit())
-	auth.POST("/login", authHandler.Login, loginRateLimiter.Limit())
-	auth.POST("/refresh", authHandler.RefreshToken, authRateLimiter.Limit())
-	auth.POST("/logout", authHandler.Logout, authRateLimiter.Limit())
+
+	if cfg.RateLimit.Enabled {
+		auth.POST("/register", authHandler.Register, authRateLimiter.Limit())
+		auth.POST("/login", authHandler.Login, loginRateLimiter.Limit())
+		auth.POST("/refresh", authHandler.RefreshToken, authRateLimiter.Limit())
+		auth.POST("/logout", authHandler.Logout, authRateLimiter.Limit())
+	} else {
+		auth.POST("/register", authHandler.Register)
+		auth.POST("/login", authHandler.Login)
+		auth.POST("/refresh", authHandler.RefreshToken)
+		auth.POST("/logout", authHandler.Logout)
+		fmt.Println("Rate limiting is disabled")
+	}
 	// JWT middleware for protected routes
 	jwtConfig := echojwt.Config{
-		SigningKey: []byte(cfg.JWT.Secret),
+		SigningKey:  []byte(cfg.JWT.Secret),
+		TokenLookup: "header:Authorization,query:token",
+		ErrorHandler: func(c echo.Context, err error) error {
+			return echo.NewHTTPError(http.StatusUnauthorized,
+				fmt.Sprintf("JWT authentication failed: %v", err))
+		},
 	}
 	jwtMiddleware := echojwt.WithConfig(jwtConfig)
 

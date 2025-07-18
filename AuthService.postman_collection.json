@@ -1,0 +1,700 @@
+{
+	"info": {
+		"_postman_id": "8c78a985-7f5e-4c4a-9a12-a71ffb9770d0",
+		"name": "Auth Service",
+		"description": "Collection to test the Auth Service API flow",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Automatically set the Authorization header for protected endpoints",
+					"const url = pm.request.url.toString();",
+					"",
+					"// Skip auth header for login, register, and public endpoints",
+					"if (!url.includes('/auth/login') && !url.includes('/auth/register') && !url.includes('/health')) {",
+					"    // Determine which token to use (admin or regular user)",
+					"    let token = url.includes('/admin/') ? pm.collectionVariables.get('adminAccessToken') : pm.collectionVariables.get('accessToken');",
+					"    ",
+					"    if (token) {",
+					"        console.log(`Setting Authorization header with ${url.includes('/admin/') ? 'admin' : 'user'} token`);",
+					"        pm.request.headers.upsert({",
+					"            key: 'Authorization',",
+					"            value: `Bearer ${token}`",
+					"        });",
+					"    } else {",
+					"        console.warn('No access token available for protected endpoint');",
+					"    }",
+					"}",
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global error handling",
+					"if (pm.response.code === 401) {",
+					"    console.error('Authentication error: ', pm.response.json());",
+					"} else if (pm.response.code >= 400) {",
+					"    console.error('Request error: ', pm.response.json());",
+					"}",
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string",
+			"description": "Base URL for the API"
+		},
+		{
+			"key": "accessToken",
+			"value": "",
+			"type": "string",
+			"description": "JWT access token for authenticated requests"
+		},
+		{
+			"key": "refreshToken",
+			"value": "",
+			"type": "string",
+			"description": "JWT refresh token"
+		},
+		{
+			"key": "adminAccessToken",
+			"value": "",
+			"type": "string",
+			"description": "Admin user access token"
+		},
+		{
+			"key": "adminRefreshToken",
+			"value": "",
+			"type": "string",
+			"description": "Admin user refresh token"
+		},
+		{
+			"key": "testUserEmail",
+			"value": "test{{$timestamp}}@example.com",
+			"type": "string",
+			"description": "Email for test user"
+		},
+		{
+			"key": "testUserName",
+			"value": "testuser{{$timestamp}}",
+			"type": "string",
+			"description": "Username for test user"
+		}
+	],
+	"item": [
+		{
+			"name": "1. Health Check",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Health check is OK\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const responseData = pm.response.json();",
+							"    pm.expect(responseData.status).to.eql(\"OK\");",
+							"});",
+							"",
+							"// Set timestamp for unique user names",
+							"pm.collectionVariables.set('timestamp', new Date().getTime());",
+							"pm.collectionVariables.set('testUserEmail', 'test' + pm.collectionVariables.get('timestamp') + '@example.com');",
+							"pm.collectionVariables.set('testUserName', 'testuser' + pm.collectionVariables.get('timestamp'));"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/health",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"health"
+					]
+				},
+				"description": "Check if the service is healthy"
+			},
+			"response": []
+		},
+		{
+			"name": "2. Register User",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Registration successful\", function () {",
+							"    pm.response.to.have.status(201);",
+							"    const responseData = pm.response.json();",
+							"    pm.expect(responseData.username).to.eql(pm.collectionVariables.get('testUserName'));",
+							"    pm.expect(responseData.email).to.eql(pm.collectionVariables.get('testUserEmail'));",
+							"    pm.expect(responseData.role).to.eql('user');",
+							"    console.log('User registered with email: ' + responseData.email);",
+							"});",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\": \"{{testUserEmail}}\",\n    \"username\": \"{{testUserName}}\",\n    \"password\": \"Password123\",\n    \"first_name\": \"Test\",\n    \"last_name\": \"User\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/auth/register",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"auth",
+						"register"
+					]
+				},
+				"description": "Register a new user"
+			},
+			"response": []
+		},
+		{
+			"name": "3. Login User",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Login successful\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.access_token).to.exist;",
+							"    pm.expect(responseData.refresh_token).to.exist;",
+							"    ",
+							"    // Store tokens for subsequent requests",
+							"    pm.collectionVariables.set('accessToken', responseData.access_token);",
+							"    pm.collectionVariables.set('refreshToken', responseData.refresh_token);",
+							"    ",
+							"    // Print the token for easy copying",
+							"    console.log('ACCESS TOKEN: ' + responseData.access_token);",
+							"    ",
+							"    // Inspect token for troubleshooting",
+							"    try {",
+							"        const tokenParts = responseData.access_token.split('.');",
+							"        if (tokenParts.length === 3) {",
+							"            const payload = JSON.parse(atob(tokenParts[1]));",
+							"            console.log('Token payload:', payload);",
+							"            console.log('Subject:', payload.sub);",
+							"            console.log('Role:', payload.role);",
+							"            ",
+							"            // Validate payload has necessary fields",
+							"            if (!payload.sub) {",
+							"                console.error('Warning: Token missing subject (sub) claim!');",
+							"            }",
+							"            if (!payload.role) {",
+							"                console.error('Warning: Token missing role claim!');",
+							"            }",
+							"        } else {",
+							"            console.error('ERROR: Token does not have expected JWT format');",
+							"        }",
+							"    } catch (e) {",
+							"        console.error('Error parsing token:', e);",
+							"    }",
+							"    ",
+							"    console.log('User logged in, tokens stored');",
+							"    ",
+							"    // Add a delayed execution to test the token immediately",
+							"    setTimeout(() => {",
+							"        const token = pm.collectionVariables.get('accessToken');",
+							"        console.log('Stored token verification: ' + (token ? 'Token present' : 'Token missing'));",
+							"    }, 100);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\": \"{{testUserEmail}}\",\n    \"password\": \"Password123\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/auth/login",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"auth",
+						"login"
+					]
+				},
+				"description": "Login with the newly created user"
+			},
+			"response": []
+		},
+		{
+			"name": "4. Get User Profile",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+			   "exec": [
+				   "const token = pm.collectionVariables.get('accessToken');",
+				   "if (!token) {",
+				   "    throw new Error('No access token is available!');",
+				   "}",
+				   "const parts = token.split('.');",
+				   "if (parts.length !== 3) {",
+				   "    throw new Error('Token does not have the expected JWT format (3 parts)');",
+				   "}",
+				   "pm.request.headers.upsert({",
+				   "    key: 'Authorization',",
+				   "    value: 'Bearer ' + token",
+				   "});"
+			   ],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Get user profile successful\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.email).to.eql(pm.collectionVariables.get('testUserEmail'));",
+							"    pm.expect(responseData.username).to.eql(pm.collectionVariables.get('testUserName'));",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/user/me",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"user",
+						"me"
+					]
+				},
+				"description": "Get user profile with access token"
+			},
+			"response": []
+		},
+		{
+			"name": "5. Refresh Token",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Token refresh successful\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.access_token).to.exist;",
+							"    pm.expect(responseData.refresh_token).to.exist;",
+							"    ",
+							"    // Store new tokens",
+							"    pm.collectionVariables.set('accessToken', responseData.access_token);",
+							"    pm.collectionVariables.set('refreshToken', responseData.refresh_token);",
+							"    ",
+							"    console.log('Tokens refreshed and stored');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"refresh_token\": \"{{refreshToken}}\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/auth/refresh",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"auth",
+						"refresh"
+					]
+				},
+				"description": "Refresh the access token"
+			},
+			"response": []
+		},
+		{
+			"name": "6. Get User Profile with New Token",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Get user profile with new token successful\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.email).to.eql(pm.collectionVariables.get('testUserEmail'));",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/user/me",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"user",
+						"me"
+					]
+				},
+				"description": "Get user profile with the new access token"
+			},
+			"response": []
+		},
+		{
+			"name": "7. Try Accessing Admin Endpoint (Should Fail)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Admin access denied for regular user\", function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([401, 403]);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/admin/users",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"admin",
+						"users"
+					]
+				},
+				"description": "Try accessing admin endpoint with regular user token"
+			},
+			"response": []
+		},
+		{
+			"name": "8. Login as Admin",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Admin login successful\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.access_token).to.exist;",
+							"    pm.expect(responseData.refresh_token).to.exist;",
+							"    ",
+							"    // Store admin tokens",
+							"    pm.collectionVariables.set('adminAccessToken', responseData.access_token);",
+							"    pm.collectionVariables.set('adminRefreshToken', responseData.refresh_token);",
+							"    ",
+							"    console.log('Admin logged in, tokens stored');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"admin123\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/auth/login",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"auth",
+						"login"
+					]
+				},
+				"description": "Login with admin credentials"
+			},
+			"response": []
+		},
+		{
+			"name": "9. Get All Users (Admin)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Admin can get all users\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.users).to.be.an('array');",
+							"    pm.expect(responseData.users.length).to.be.greaterThan(0);",
+							"    ",
+							"    // Check if our test user is in the list",
+							"    const testUser = responseData.users.find(user => user.email === pm.collectionVariables.get('testUserEmail'));",
+							"    pm.expect(testUser).to.exist;",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{adminAccessToken}}"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/admin/users",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"admin",
+						"users"
+					]
+				},
+				"description": "Get all users with admin token"
+			},
+			"response": []
+		},
+		{
+			"name": "10. Get System Stats (Admin)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Admin can get system stats\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.total_users).to.exist;",
+							"    pm.expect(responseData.active_users).to.exist;",
+							"    pm.expect(responseData.total_admins).to.exist;",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{adminAccessToken}}"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/admin/stats",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"admin",
+						"stats"
+					]
+				},
+				"description": "Get system stats with admin token"
+			},
+			"response": []
+		},
+		{
+			"name": "11. Logout User",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Logout successful\", function () {",
+							"    pm.response.to.have.status(200);",
+							"    const responseData = pm.response.json();",
+							"    ",
+							"    pm.expect(responseData.message).to.include('logged out');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"refresh_token\": \"{{refreshToken}}\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/auth/logout",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"auth",
+						"logout"
+					]
+				},
+				"description": "Log out the user"
+			},
+			"response": []
+		},
+		{
+			"name": "12. Try Accessing with Revoked Token",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Access denied with revoked token\", function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([401, 403]);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/user/me",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"user",
+						"me"
+					]
+				},
+				"description": "Try accessing user profile with logged out token"
+			},
+			"response": []
+		}
+   ]
+}
