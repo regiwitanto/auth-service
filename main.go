@@ -2,31 +2,31 @@ package main
 
 import (
 	"fmt"
-	"net/http"
-	"time"
 
-	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/regiwitanto/auth-service/config"
 	"github.com/regiwitanto/auth-service/internal/delivery/http/handler"
-	customMiddleware "github.com/regiwitanto/auth-service/internal/delivery/http/middleware"
 	"github.com/regiwitanto/auth-service/internal/repository"
 	"github.com/regiwitanto/auth-service/internal/usecase"
 )
 
 func main() {
+	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to load configuration: %v", err))
 	}
 
+	// Initialize Echo framework
 	e := echo.New()
 
+	// Setup middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
 
+	// Initialize database and Redis
 	db, err := config.InitDB(cfg)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to connect to database: %v", err))
@@ -37,106 +37,23 @@ func main() {
 		panic(fmt.Sprintf("Failed to connect to Redis: %v", err))
 	}
 
+	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
 	tokenRepo := repository.NewTokenRepository(redisClient)
 
+	// Initialize use cases
 	authUseCase := usecase.NewAuthUseCase(userRepo, tokenRepo, cfg)
 
-	authHandler := handler.NewAuthHandler(authUseCase)
-	adminHandler := handler.NewAdminHandler(authUseCase)
+	// Initialize handlers
+	healthHandler := handler.NewHealthHandler()
+	authHandler := handler.NewAuthHandler(authUseCase, &cfg)
+	adminHandler := handler.NewAdminHandler(authUseCase, &cfg)
 
-	rbacMiddleware := customMiddleware.NewRBACMiddleware()
+	// Register routes for each handler
+	healthHandler.RegisterRoutes(e)
+	authHandler.RegisterRoutes(e)
+	adminHandler.RegisterRoutes(e)
 
-	var authRateLimiter, loginRateLimiter *customMiddleware.RateLimiter
-
-	// Configure rate limiters based on environment
-	if !cfg.RateLimit.Enabled || cfg.Environment == "development" {
-		// In development mode or when rate limiting is disabled, use very permissive settings
-		authRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
-			Requests:  1000,
-			Window:    time.Minute,
-			BurstSize: 50,
-			Strategy:  "ip",
-		})
-
-		loginRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
-			Requests:  1000,
-			Window:    time.Minute,
-			BurstSize: 50,
-			Strategy:  "ip",
-		})
-
-		fmt.Println("Rate limiting is set to development mode (1000 req/min)")
-	} else {
-		// In production, use the configured settings
-		authRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
-			Requests:  cfg.RateLimit.APIRequestsPerMin,
-			Window:    time.Minute,
-			BurstSize: cfg.RateLimit.APIBurstSize,
-			Strategy:  "ip",
-		})
-
-		loginRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
-			Requests:  cfg.RateLimit.LoginRequestsPerMin,
-			Window:    time.Minute,
-			BurstSize: cfg.RateLimit.LoginBurstSize,
-			Strategy:  "ip",
-		})
-
-		fmt.Printf("Rate limiting is set to production mode (Login: %d req/min, API: %d req/min)\n",
-			cfg.RateLimit.LoginRequestsPerMin,
-			cfg.RateLimit.APIRequestsPerMin)
-	}
-
-	// Health check endpoint
-	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{
-			"status":  "OK",
-			"message": "Auth service is healthy",
-		})
-	})
-
-	api := e.Group("/api/v1")
-
-	auth := api.Group("/auth")
-
-	if cfg.RateLimit.Enabled {
-		auth.POST("/register", authHandler.Register, authRateLimiter.Limit())
-		auth.POST("/login", authHandler.Login, loginRateLimiter.Limit())
-		auth.POST("/refresh", authHandler.RefreshToken, authRateLimiter.Limit())
-		auth.POST("/logout", authHandler.Logout, authRateLimiter.Limit())
-		auth.POST("/forgot-password", authHandler.ForgotPassword, authRateLimiter.Limit())
-		auth.POST("/reset-password", authHandler.ResetPassword, authRateLimiter.Limit())
-	} else {
-		auth.POST("/register", authHandler.Register)
-		auth.POST("/login", authHandler.Login)
-		auth.POST("/refresh", authHandler.RefreshToken)
-		auth.POST("/logout", authHandler.Logout)
-		auth.POST("/forgot-password", authHandler.ForgotPassword)
-		auth.POST("/reset-password", authHandler.ResetPassword)
-		fmt.Println("Rate limiting is disabled")
-	}
-	// JWT middleware for protected routes
-	jwtConfig := echojwt.Config{
-		SigningKey:  []byte(cfg.JWT.Secret),
-		TokenLookup: "header:Authorization,query:token",
-		ErrorHandler: func(c echo.Context, err error) error {
-			return echo.NewHTTPError(http.StatusUnauthorized,
-				fmt.Sprintf("JWT authentication failed: %v", err))
-		},
-	}
-	jwtMiddleware := echojwt.WithConfig(jwtConfig)
-
-	user := api.Group("/user")
-	user.Use(jwtMiddleware)
-	user.Use(rbacMiddleware.IsUser())
-	user.GET("/me", authHandler.GetUserProfile)
-
-	admin := api.Group("/admin")
-	admin.Use(jwtMiddleware)
-	admin.Use(rbacMiddleware.IsAdmin())
-	admin.GET("/users", adminHandler.GetAllUsers)
-	admin.GET("/stats", adminHandler.GetSystemStats)
-
+	// Start server
 	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", cfg.Server.Port)))
 }

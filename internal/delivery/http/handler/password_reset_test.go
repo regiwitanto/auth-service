@@ -20,7 +20,8 @@ func TestForgotPassword(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
-	authHandler := handler.NewAuthHandler(mockAuthUseCase)
+	mockConfig := mocks.MockConfig()
+	authHandler := handler.NewAuthHandler(mockAuthUseCase, mockConfig)
 
 	tests := []struct {
 		name           string
@@ -104,7 +105,8 @@ func TestResetPassword(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
-	authHandler := handler.NewAuthHandler(mockAuthUseCase)
+	mockConfig := mocks.MockConfig()
+	authHandler := handler.NewAuthHandler(mockAuthUseCase, mockConfig)
 
 	tests := []struct {
 		name           string

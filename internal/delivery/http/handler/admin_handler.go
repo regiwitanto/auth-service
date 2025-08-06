@@ -3,18 +3,48 @@ package handler
 import (
 	"net/http"
 
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
+	"github.com/regiwitanto/auth-service/config"
+	customMiddleware "github.com/regiwitanto/auth-service/internal/delivery/http/middleware"
 	"github.com/regiwitanto/auth-service/internal/usecase"
 )
 
 type AdminHandler struct {
-	authUseCase usecase.AuthUseCase
+	authUseCase    usecase.AuthUseCase
+	config         *config.Config
+	rbacMiddleware *customMiddleware.RBACMiddleware
 }
 
-func NewAdminHandler(authUseCase usecase.AuthUseCase) *AdminHandler {
+func NewAdminHandler(authUseCase usecase.AuthUseCase, cfg *config.Config) *AdminHandler {
 	return &AdminHandler{
-		authUseCase: authUseCase,
+		authUseCase:    authUseCase,
+		config:         cfg,
+		rbacMiddleware: customMiddleware.NewRBACMiddleware(),
 	}
+}
+
+// RegisterRoutes registers all admin routes
+func (h *AdminHandler) RegisterRoutes(e *echo.Echo) {
+	api := e.Group("/api/v1")
+
+	// JWT middleware for protected routes
+	jwtConfig := echojwt.Config{
+		SigningKey:  []byte(h.config.JWT.Secret),
+		TokenLookup: "header:Authorization,query:token",
+		ErrorHandler: func(c echo.Context, err error) error {
+			return echo.NewHTTPError(http.StatusUnauthorized,
+				"JWT authentication failed: "+err.Error())
+		},
+	}
+	jwtMiddleware := echojwt.WithConfig(jwtConfig)
+
+	// Admin routes
+	admin := api.Group("/admin")
+	admin.Use(jwtMiddleware)
+	admin.Use(h.rbacMiddleware.IsAdmin())
+	admin.GET("/users", h.GetAllUsers)
+	admin.GET("/stats", h.GetSystemStats)
 }
 
 // GetAllUsers returns a list of all users

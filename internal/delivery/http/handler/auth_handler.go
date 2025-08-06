@@ -3,24 +3,108 @@ package handler
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt"
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
+	"github.com/regiwitanto/auth-service/config"
+	customMiddleware "github.com/regiwitanto/auth-service/internal/delivery/http/middleware"
 	"github.com/regiwitanto/auth-service/internal/domain"
 	"github.com/regiwitanto/auth-service/internal/usecase"
 )
 
 type AuthHandler struct {
-	authUseCase usecase.AuthUseCase
-	validator   *validator.Validate
+	authUseCase    usecase.AuthUseCase
+	validator      *validator.Validate
+	config         *config.Config
+	rbacMiddleware *customMiddleware.RBACMiddleware
 }
 
-func NewAuthHandler(authUseCase usecase.AuthUseCase) *AuthHandler {
+func NewAuthHandler(authUseCase usecase.AuthUseCase, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
-		authUseCase: authUseCase,
-		validator:   validator.New(),
+		authUseCase:    authUseCase,
+		validator:      validator.New(),
+		config:         cfg,
+		rbacMiddleware: customMiddleware.NewRBACMiddleware(),
 	}
+}
+
+// RegisterRoutes registers all the auth related routes
+func (h *AuthHandler) RegisterRoutes(e *echo.Echo) {
+	api := e.Group("/api/v1")
+	auth := api.Group("/auth")
+
+	// Setup rate limiters
+	var authRateLimiter, loginRateLimiter *customMiddleware.RateLimiter
+
+	// Configure rate limiters based on environment
+	if !h.config.RateLimit.Enabled || h.config.Environment == "development" {
+		// In development mode or when rate limiting is disabled, use very permissive settings
+		authRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
+			Requests:  1000,
+			Window:    time.Minute,
+			BurstSize: 50,
+			Strategy:  "ip",
+		})
+
+		loginRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
+			Requests:  1000,
+			Window:    time.Minute,
+			BurstSize: 50,
+			Strategy:  "ip",
+		})
+	} else {
+		// In production, use the configured settings
+		authRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
+			Requests:  h.config.RateLimit.APIRequestsPerMin,
+			Window:    time.Minute,
+			BurstSize: h.config.RateLimit.APIBurstSize,
+			Strategy:  "ip",
+		})
+
+		loginRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
+			Requests:  h.config.RateLimit.LoginRequestsPerMin,
+			Window:    time.Minute,
+			BurstSize: h.config.RateLimit.LoginBurstSize,
+			Strategy:  "ip",
+		})
+	}
+
+	// Register auth routes with appropriate rate limiters
+	if h.config.RateLimit.Enabled {
+		auth.POST("/register", h.Register, authRateLimiter.Limit())
+		auth.POST("/login", h.Login, loginRateLimiter.Limit())
+		auth.POST("/refresh", h.RefreshToken, authRateLimiter.Limit())
+		auth.POST("/logout", h.Logout, authRateLimiter.Limit())
+		auth.POST("/forgot-password", h.ForgotPassword, authRateLimiter.Limit())
+		auth.POST("/reset-password", h.ResetPassword, authRateLimiter.Limit())
+	} else {
+		auth.POST("/register", h.Register)
+		auth.POST("/login", h.Login)
+		auth.POST("/refresh", h.RefreshToken)
+		auth.POST("/logout", h.Logout)
+		auth.POST("/forgot-password", h.ForgotPassword)
+		auth.POST("/reset-password", h.ResetPassword)
+	}
+
+	// JWT middleware for protected routes
+	jwtConfig := echojwt.Config{
+		SigningKey:  []byte(h.config.JWT.Secret),
+		TokenLookup: "header:Authorization,query:token",
+		ErrorHandler: func(c echo.Context, err error) error {
+			return echo.NewHTTPError(http.StatusUnauthorized,
+				"JWT authentication failed: "+err.Error())
+		},
+	}
+	jwtMiddleware := echojwt.WithConfig(jwtConfig)
+
+	// User routes
+	user := api.Group("/user")
+	user.Use(jwtMiddleware)
+	user.Use(h.rbacMiddleware.IsUser())
+	user.GET("/me", h.GetUserProfile)
 }
 
 // Register handles user registration

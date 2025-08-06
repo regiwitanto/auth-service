@@ -15,7 +15,8 @@ func TestGetAllUsers(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
-	adminHandler := handler.NewAdminHandler(mockAuthUseCase)
+	mockConfig := mocks.MockConfig()
+	adminHandler := handler.NewAdminHandler(mockAuthUseCase, mockConfig)
 
 	// Create JWT claims for admin user
 	adminClaims := make(map[string]interface{})
@@ -70,7 +71,8 @@ func TestGetSystemStats(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
-	adminHandler := handler.NewAdminHandler(mockAuthUseCase)
+	mockConfig := mocks.MockConfig()
+	adminHandler := handler.NewAdminHandler(mockAuthUseCase, mockConfig)
 
 	// Create JWT claims for admin user
 	adminClaims := make(map[string]interface{})

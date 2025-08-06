@@ -23,7 +23,8 @@ func TestRegister(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
-	authHandler := handler.NewAuthHandler(mockAuthUseCase)
+	mockConfig := mocks.MockConfig()
+	authHandler := handler.NewAuthHandler(mockAuthUseCase, mockConfig)
 
 	tests := []struct {
 		name           string
@@ -132,7 +133,8 @@ func TestLogin(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
-	authHandler := handler.NewAuthHandler(mockAuthUseCase)
+	mockConfig := mocks.MockConfig()
+	authHandler := handler.NewAuthHandler(mockAuthUseCase, mockConfig)
 
 	tests := []struct {
 		name           string
@@ -231,7 +233,8 @@ func TestRefreshToken(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
-	authHandler := handler.NewAuthHandler(mockAuthUseCase)
+	mockConfig := mocks.MockConfig()
+	authHandler := handler.NewAuthHandler(mockAuthUseCase, mockConfig)
 
 	tests := []struct {
 		name           string
@@ -317,7 +320,8 @@ func TestLogout(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
-	authHandler := handler.NewAuthHandler(mockAuthUseCase)
+	mockConfig := mocks.MockConfig()
+	authHandler := handler.NewAuthHandler(mockAuthUseCase, mockConfig)
 
 	tests := []struct {
 		name           string
@@ -394,7 +398,8 @@ func TestGetProfile(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
-	authHandler := handler.NewAuthHandler(mockAuthUseCase)
+	mockConfig := mocks.MockConfig()
+	authHandler := handler.NewAuthHandler(mockAuthUseCase, mockConfig)
 
 	token := jwt.New(jwt.SigningMethodHS256)
 	claims := token.Claims.(jwt.MapClaims)
