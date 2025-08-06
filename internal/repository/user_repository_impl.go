@@ -86,3 +86,21 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 func (r *userRepository) Delete(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Delete(&domain.User{}, id).Error
 }
+
+// UpdatePassword updates a user's password by email
+func (r *userRepository) UpdatePassword(ctx context.Context, email string, hashedPassword string) error {
+	result := r.db.WithContext(ctx).
+		Model(&domain.User{}).
+		Where("email = ?", email).
+		Update("password", hashedPassword)
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return errors.New("user not found")
+	}
+
+	return nil
+}

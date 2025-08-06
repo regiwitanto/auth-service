@@ -23,7 +23,8 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port int
+	Port    int
+	BaseURL string
 }
 
 type DatabaseConfig struct {
@@ -94,6 +95,7 @@ func LoadConfig() (config Config, err error) {
 
 	// Set config values from environment variables
 	config.Server.Port = serverPort
+	config.Server.BaseURL = getEnvWithDefault("SERVER_BASE_URL", "http://localhost:8080")
 
 	// Database configuration
 	config.Database.Host = getEnvWithDefault("DB_HOST", "localhost")

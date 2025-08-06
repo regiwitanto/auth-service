@@ -11,11 +11,11 @@ import (
 
 // tokenRepository implements the TokenRepository interface
 type tokenRepository struct {
-	redis *redis.Client
+	redis RedisClient
 }
 
 // NewTokenRepository creates a new token repository
-func NewTokenRepository(redis *redis.Client) TokenRepository {
+func NewTokenRepository(redis RedisClient) TokenRepository {
 	return &tokenRepository{
 		redis: redis,
 	}
@@ -101,4 +101,30 @@ func (r *tokenRepository) DeleteAllUserTokens(ctx context.Context, userID string
 
 	_, err = pipe.Exec(ctx)
 	return err
+}
+
+// StorePasswordResetToken stores a password reset token with expiry
+func (r *tokenRepository) StorePasswordResetToken(ctx context.Context, email string, token string, expiry time.Duration) error {
+	// Store the token with the email as value
+	key := fmt.Sprintf("password_reset:%s", token)
+	return r.redis.Set(ctx, key, email, expiry).Err()
+}
+
+// GetEmailByResetToken retrieves the email associated with a password reset token
+func (r *tokenRepository) GetEmailByResetToken(ctx context.Context, token string) (string, error) {
+	key := fmt.Sprintf("password_reset:%s", token)
+	email, err := r.redis.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return "", errors.New("password reset token not found or expired")
+		}
+		return "", err
+	}
+	return email, nil
+}
+
+// DeletePasswordResetToken deletes a password reset token
+func (r *tokenRepository) DeletePasswordResetToken(ctx context.Context, token string) error {
+	key := fmt.Sprintf("password_reset:%s", token)
+	return r.redis.Del(ctx, key).Err()
 }

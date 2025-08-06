@@ -105,11 +105,15 @@ func main() {
 		auth.POST("/login", authHandler.Login, loginRateLimiter.Limit())
 		auth.POST("/refresh", authHandler.RefreshToken, authRateLimiter.Limit())
 		auth.POST("/logout", authHandler.Logout, authRateLimiter.Limit())
+		auth.POST("/forgot-password", authHandler.ForgotPassword, authRateLimiter.Limit())
+		auth.POST("/reset-password", authHandler.ResetPassword, authRateLimiter.Limit())
 	} else {
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.RefreshToken)
 		auth.POST("/logout", authHandler.Logout)
+		auth.POST("/forgot-password", authHandler.ForgotPassword)
+		auth.POST("/reset-password", authHandler.ResetPassword)
 		fmt.Println("Rate limiting is disabled")
 	}
 	// JWT middleware for protected routes

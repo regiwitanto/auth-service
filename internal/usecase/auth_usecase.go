@@ -13,4 +13,8 @@ type AuthUseCase interface {
 	Logout(ctx context.Context, token string) error
 	GetUserProfile(ctx context.Context, userID string) (*domain.UserResponse, error)
 	VerifyToken(tokenString string) (map[string]interface{}, error)
+
+	// Password reset methods
+	ForgotPassword(ctx context.Context, request *domain.ForgotPasswordRequest) error
+	ResetPassword(ctx context.Context, request *domain.ResetPasswordRequest) error
 }

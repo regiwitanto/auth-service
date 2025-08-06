@@ -14,6 +14,34 @@ type MockAuthUseCase struct {
 	mock.Mock
 }
 
+// ForgotPassword provides a mock function with given fields: ctx, request
+func (_m *MockAuthUseCase) ForgotPassword(ctx context.Context, request *domain.ForgotPasswordRequest) error {
+	ret := _m.Called(ctx, request)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *domain.ForgotPasswordRequest) error); ok {
+		r0 = rf(ctx, request)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ResetPassword provides a mock function with given fields: ctx, request
+func (_m *MockAuthUseCase) ResetPassword(ctx context.Context, request *domain.ResetPasswordRequest) error {
+	ret := _m.Called(ctx, request)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *domain.ResetPasswordRequest) error); ok {
+		r0 = rf(ctx, request)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Register provides a mock function with given fields: ctx, request
 func (_m *MockAuthUseCase) Register(ctx context.Context, request *domain.RegisterRequest) (*domain.UserResponse, error) {
 	ret := _m.Called(ctx, request)

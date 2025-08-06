@@ -147,6 +147,64 @@ func (h *AuthHandler) GetUserProfile(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// ForgotPassword initiates the password reset process
+func (h *AuthHandler) ForgotPassword(c echo.Context) error {
+	var request domain.ForgotPasswordRequest
+	if err := c.Bind(&request); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Invalid request format",
+		})
+	}
+
+	// Validate the request
+	if err := h.validator.Struct(request); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Validation failed: " + err.Error(),
+		})
+	}
+
+	// Call the use case
+	err := h.authUseCase.ForgotPassword(c.Request().Context(), &request)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	// Always return success, even if email doesn't exist (security best practice)
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "If your email is registered, you will receive password reset instructions",
+	})
+}
+
+// ResetPassword resets the user's password
+func (h *AuthHandler) ResetPassword(c echo.Context) error {
+	var request domain.ResetPasswordRequest
+	if err := c.Bind(&request); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Invalid request format",
+		})
+	}
+
+	// Validate the request
+	if err := h.validator.Struct(request); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Validation failed: " + err.Error(),
+		})
+	}
+
+	// Call the use case
+	if err := h.authUseCase.ResetPassword(c.Request().Context(), &request); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "Password has been reset successfully",
+	})
+}
+
 // Helper methods
 
 // extractUserID extracts the user ID from the JWT token

@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -261,4 +263,74 @@ func (uc *authUseCase) generateRefreshToken(user *domain.User) (string, error) {
 	}
 
 	return tokenString, nil
+}
+
+// Generate a secure random token
+func (uc *authUseCase) generateSecureToken(length int) (string, error) {
+	b := make([]byte, length)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// ForgotPassword initiates the password reset flow
+func (uc *authUseCase) ForgotPassword(ctx context.Context, request *domain.ForgotPasswordRequest) error {
+	// Check if user exists with the provided email
+	user, err := uc.userRepo.FindByEmail(ctx, request.Email)
+	if err != nil {
+		// Don't reveal that the email doesn't exist for security reasons
+		// Just pretend we sent an email
+		return nil
+	}
+
+	// Generate a secure token
+	token, err := uc.generateSecureToken(32)
+	if err != nil {
+		return fmt.Errorf("failed to generate reset token: %w", err)
+	}
+
+	// Store the token in Redis with the user's email
+	err = uc.tokenRepo.StorePasswordResetToken(ctx, user.Email, token, 15*time.Minute)
+	if err != nil {
+		return fmt.Errorf("failed to store reset token: %w", err)
+	}
+
+	// In a real implementation, we would send an email with the reset link
+	// For now, we'll just log it (in a real app this should be removed)
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", uc.config.Server.BaseURL, token)
+	fmt.Printf("Password reset requested for %s. Reset link: %s\n", user.Email, resetLink)
+
+	return nil
+}
+
+// ResetPassword completes the password reset flow
+func (uc *authUseCase) ResetPassword(ctx context.Context, request *domain.ResetPasswordRequest) error {
+	// Verify the token and get the associated email
+	email, err := uc.tokenRepo.GetEmailByResetToken(ctx, request.Token)
+	if err != nil {
+		return errors.New("invalid or expired reset token")
+	}
+
+	// Hash the new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Update the user's password
+	err = uc.userRepo.UpdatePassword(ctx, email, string(hashedPassword))
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Delete the used token
+	err = uc.tokenRepo.DeletePasswordResetToken(ctx, request.Token)
+	if err != nil {
+		// This is not critical, we can continue even if this fails
+		fmt.Printf("Failed to delete reset token: %v\n", err)
+	}
+
+	return nil
 }

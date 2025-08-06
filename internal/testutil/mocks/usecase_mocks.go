@@ -62,3 +62,15 @@ func (m *MockAuthUseCase) VerifyToken(tokenString string) (map[string]interface{
 	}
 	return args.Get(0).(map[string]interface{}), args.Error(1)
 }
+
+// ForgotPassword mocks the ForgotPassword method
+func (m *MockAuthUseCase) ForgotPassword(ctx context.Context, request *domain.ForgotPasswordRequest) error {
+	args := m.Called(ctx, request)
+	return args.Error(0)
+}
+
+// ResetPassword mocks the ResetPassword method
+func (m *MockAuthUseCase) ResetPassword(ctx context.Context, request *domain.ResetPasswordRequest) error {
+	args := m.Called(ctx, request)
+	return args.Error(0)
+}

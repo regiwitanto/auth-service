@@ -72,6 +72,12 @@ func (m *MockUserRepository) Delete(ctx context.Context, id uint) error {
 	return args.Error(0)
 }
 
+// UpdatePassword mocks the UpdatePassword method
+func (m *MockUserRepository) UpdatePassword(ctx context.Context, email string, hashedPassword string) error {
+	args := m.Called(ctx, email, hashedPassword)
+	return args.Error(0)
+}
+
 // MockTokenRepository methods - The struct is declared above
 
 // StoreRefreshToken mocks the StoreRefreshToken method
@@ -95,5 +101,23 @@ func (m *MockTokenRepository) DeleteRefreshToken(ctx context.Context, token stri
 // DeleteAllUserTokens mocks the DeleteAllUserTokens method
 func (m *MockTokenRepository) DeleteAllUserTokens(ctx context.Context, userID string) error {
 	args := m.Called(ctx, userID)
+	return args.Error(0)
+}
+
+// StorePasswordResetToken mocks the StorePasswordResetToken method
+func (m *MockTokenRepository) StorePasswordResetToken(ctx context.Context, email string, token string, expiry time.Duration) error {
+	args := m.Called(ctx, email, token, expiry)
+	return args.Error(0)
+}
+
+// GetEmailByResetToken mocks the GetEmailByResetToken method
+func (m *MockTokenRepository) GetEmailByResetToken(ctx context.Context, token string) (string, error) {
+	args := m.Called(ctx, token)
+	return args.String(0), args.Error(1)
+}
+
+// DeletePasswordResetToken mocks the DeletePasswordResetToken method
+func (m *MockTokenRepository) DeletePasswordResetToken(ctx context.Context, token string) error {
+	args := m.Called(ctx, token)
 	return args.Error(0)
 }

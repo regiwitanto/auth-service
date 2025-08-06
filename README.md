@@ -6,6 +6,7 @@ A clean, production-ready authentication microservice built with Go and Echo fra
 
 - User registration and authentication
 - JWT access and refresh tokens
+- Password reset functionality
 - IP-based rate limiting protection
 - Role-based access control (RBAC)
 - PostgreSQL for user data
@@ -84,6 +85,8 @@ docker-compose up -d
 | POST | `/api/v1/auth/login` | Authenticate user |
 | POST | `/api/v1/auth/refresh` | Get new access token |
 | POST | `/api/v1/auth/logout` | Invalidate tokens |
+| POST | `/api/v1/auth/forgot-password` | Request password reset |
+| POST | `/api/v1/auth/reset-password` | Reset password with token |
 
 ### User Operations
 
