@@ -28,25 +28,60 @@ func DefaultRateLimiterConfig() RateLimiterConfig {
 }
 
 type RateLimiter struct {
-	limiters map[string]*rate.Limiter
-	config   RateLimiterConfig
-	mu       sync.RWMutex
+	limiters        map[string]*rate.Limiter
+	lastSeen        map[string]time.Time
+	config          RateLimiterConfig
+	mu              sync.RWMutex
+	cleanupInterval time.Duration
 }
 
 // NewRateLimiter creates a new rate limiter middleware with default config
 func NewRateLimiter() *RateLimiter {
 	config := DefaultRateLimiterConfig()
-	return &RateLimiter{
-		limiters: make(map[string]*rate.Limiter),
-		config:   config,
+	rl := &RateLimiter{
+		limiters:        make(map[string]*rate.Limiter),
+		lastSeen:        make(map[string]time.Time),
+		config:          config,
+		cleanupInterval: time.Hour, // Run cleanup every hour
 	}
+	go rl.cleanupTask()
+	return rl
 }
 
 // NewRateLimiterWithConfig creates a new rate limiter with custom config
 func NewRateLimiterWithConfig(config RateLimiterConfig) *RateLimiter {
-	return &RateLimiter{
-		limiters: make(map[string]*rate.Limiter),
-		config:   config,
+	rl := &RateLimiter{
+		limiters:        make(map[string]*rate.Limiter),
+		lastSeen:        make(map[string]time.Time),
+		config:          config,
+		cleanupInterval: time.Hour, // Run cleanup every hour
+	}
+	go rl.cleanupTask()
+	return rl
+}
+
+// cleanupTask periodically removes stale limiters to prevent memory leaks
+func (rl *RateLimiter) cleanupTask() {
+	ticker := time.NewTicker(rl.cleanupInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		rl.cleanup()
+	}
+}
+
+// cleanup removes limiters that haven't been used for a while
+func (rl *RateLimiter) cleanup() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	threshold := time.Now().Add(-24 * time.Hour) // Remove limiters not seen in 24 hours
+
+	for id, lastSeen := range rl.lastSeen {
+		if lastSeen.Before(threshold) {
+			delete(rl.limiters, id)
+			delete(rl.lastSeen, id)
+		}
 	}
 }
 
@@ -62,6 +97,12 @@ func (rl *RateLimiter) getLimiter(identifier string) *rate.Limiter {
 
 		rl.mu.Lock()
 		rl.limiters[identifier] = limiter
+		rl.lastSeen[identifier] = time.Now()
+		rl.mu.Unlock()
+	} else {
+		// Update the last seen time for this identifier
+		rl.mu.Lock()
+		rl.lastSeen[identifier] = time.Now()
 		rl.mu.Unlock()
 	}
 

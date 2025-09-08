@@ -1,13 +1,14 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt"
-	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	"github.com/regiwitanto/auth-service/config"
 	customMiddleware "github.com/regiwitanto/auth-service/internal/delivery/http/middleware"
@@ -89,20 +90,16 @@ func (h *AuthHandler) RegisterRoutes(e *echo.Echo) {
 		auth.POST("/reset-password", h.ResetPassword)
 	}
 
-	// JWT middleware for protected routes
-	jwtConfig := echojwt.Config{
-		SigningKey:  []byte(h.config.JWT.Secret),
-		TokenLookup: "header:Authorization,query:token",
-		ErrorHandler: func(c echo.Context, err error) error {
-			return echo.NewHTTPError(http.StatusUnauthorized,
-				"JWT authentication failed: "+err.Error())
-		},
-	}
-	jwtMiddleware := echojwt.WithConfig(jwtConfig)
+	// We'll use our custom JWT validator instead of the echojwt middleware
+
+	// Create a custom JWT validator middleware
+	jwtValidator := customMiddleware.NewJWTValidatorMiddleware(h.config)
 
 	// User routes
 	user := api.Group("/user")
-	user.Use(jwtMiddleware)
+
+	// Use our custom validator instead of the default JWT middleware
+	user.Use(jwtValidator.ValidateToken())
 	user.Use(h.rbacMiddleware.IsUser())
 	user.GET("/me", h.GetUserProfile)
 }
@@ -136,26 +133,66 @@ func (h *AuthHandler) Register(c echo.Context) error {
 
 // Login handles user login
 func (h *AuthHandler) Login(c echo.Context) error {
+	// Create a context with timeout for the login operation
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
 	var request domain.LoginRequest
 	if err := c.Bind(&request); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Invalid request format",
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":   "Invalid request format",
+			"details": err.Error(),
 		})
 	}
+
+	// Sanitize inputs
+	request.Email = strings.TrimSpace(request.Email)
 
 	// Validate the request
 	if err := h.validator.Struct(request); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Validation failed: " + err.Error(),
+		// Extract validation errors for better user feedback
+		validationErrors := []map[string]interface{}{}
+
+		if validationErrs, ok := err.(validator.ValidationErrors); ok {
+			for _, e := range validationErrs {
+				validationErrors = append(validationErrors, map[string]interface{}{
+					"field": e.Field(),
+					"tag":   e.Tag(),
+					"value": e.Value(),
+				})
+			}
+		}
+
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": validationErrors,
 		})
 	}
 
-	// Call the use case
-	response, err := h.authUseCase.Login(c.Request().Context(), &request)
+	// Call the use case with timeout context
+	response, err := h.authUseCase.Login(ctx, &request)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"error": err.Error(),
-		})
+		// Differentiate between different error types
+		switch {
+		case ctx.Err() != nil:
+			return c.JSON(http.StatusGatewayTimeout, map[string]string{
+				"error": "Login request timed out",
+			})
+		case errors.Is(err, domain.ErrInvalidCredentials): // Add this error type to your domain
+			return c.JSON(http.StatusUnauthorized, map[string]string{
+				"error": "Invalid email or password",
+			})
+		case errors.Is(err, domain.ErrAccountDisabled): // Add this error type to your domain
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"error": "Account is disabled",
+			})
+		default:
+			// Log the actual error for debugging but don't expose it to the client
+			c.Logger().Error("Login error:", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "An unexpected error occurred during login",
+			})
+		}
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -306,16 +343,19 @@ func (h *AuthHandler) extractUserID(c echo.Context) (string, error) {
 			return "", echo.NewHTTPError(http.StatusUnauthorized, "Missing authorization header")
 		}
 
-		// Extract the token from the Bearer token
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
+		// Clean up and extract the token from the Bearer token
+		authHeader = strings.TrimSpace(authHeader)
+		if !strings.HasPrefix(authHeader, "Bearer ") {
 			return "", echo.NewHTTPError(http.StatusUnauthorized, "Invalid authorization format")
 		}
 
+		// Extract token and trim any spaces
+		token := strings.TrimSpace(authHeader[7:])
+
 		// Verify the token manually
-		claims, err := h.authUseCase.VerifyToken(parts[1])
+		claims, err := h.authUseCase.VerifyToken(token)
 		if err != nil {
-			return "", echo.NewHTTPError(http.StatusUnauthorized, "Invalid token")
+			return "", echo.NewHTTPError(http.StatusUnauthorized, "Invalid token: "+err.Error())
 		}
 
 		// Extract the user ID from claims

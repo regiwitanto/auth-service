@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/regiwitanto/auth-service/internal/domain"
 	"gorm.io/gorm"
@@ -25,15 +26,21 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	return r.db.WithContext(ctx).Create(user).Error
 }
 
+// Common error variables
+var (
+	ErrUserNotFound = errors.New("user not found")
+	ErrDatabase     = errors.New("database error")
+)
+
 // FindByID finds a user by ID
 func (r *userRepository) FindByID(ctx context.Context, id uint) (*domain.User, error) {
 	var user domain.User
 	err := r.db.WithContext(ctx).First(&user, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
+			return nil, ErrUserNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
 	}
 	return &user, nil
 }
@@ -44,9 +51,9 @@ func (r *userRepository) FindByUUID(ctx context.Context, uuid string) (*domain.U
 	err := r.db.WithContext(ctx).Where("uuid = ?", uuid).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
+			return nil, ErrUserNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
 	}
 	return &user, nil
 }
@@ -57,9 +64,9 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain
 	err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
+			return nil, ErrUserNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
 	}
 	return &user, nil
 }

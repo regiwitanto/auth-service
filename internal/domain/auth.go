@@ -1,5 +1,18 @@
 package domain
 
+import "errors"
+
+// Common error types for authentication operations
+var (
+	ErrInvalidCredentials = errors.New("invalid email or password")
+	ErrAccountDisabled    = errors.New("account is disabled")
+	ErrTokenExpired       = errors.New("token has expired")
+	ErrInvalidToken       = errors.New("invalid or malformed token")
+	ErrTokenRevoked       = errors.New("token has been revoked")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrUserExists         = errors.New("user already exists")
+)
+
 type RegisterRequest struct {
 	Email     string `json:"email" validate:"required,email"`
 	Username  string `json:"username" validate:"required,min=3,max=50"`

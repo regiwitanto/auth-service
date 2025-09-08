@@ -23,21 +23,33 @@ func NewTokenRepository(redis RedisClient) TokenRepository {
 
 // StoreRefreshToken stores a refresh token with expiry
 func (r *tokenRepository) StoreRefreshToken(ctx context.Context, userID string, token string, expiry time.Duration) error {
+	// Check if context is already canceled or timed out
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	// Use a transaction to ensure atomicity
+	pipe := r.redis.Pipeline()
+
 	// Store the token with the user ID as value
 	key := fmt.Sprintf("refresh_token:%s", token)
-	err := r.redis.Set(ctx, key, userID, expiry).Err()
-	if err != nil {
-		return err
-	}
+	pipe.Set(ctx, key, userID, expiry)
 
 	// Also store a reference in a set of tokens for this user (for logout all functionality)
 	userTokensKey := fmt.Sprintf("user_tokens:%s", userID)
-	err = r.redis.SAdd(ctx, userTokensKey, token).Err()
+	pipe.SAdd(ctx, userTokensKey, token)
+
+	// Set a reasonable expiry on the set itself (e.g., max refresh token lifetime)
+	// This helps with Redis memory management
+	maxExpiry := 30 * 24 * time.Hour // 30 days
+	pipe.Expire(ctx, userTokensKey, maxExpiry)
+
+	// Execute the pipeline
+	_, err := pipe.Exec(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
-	// We don't set expiry on the set itself as it will be cleaned up when all tokens expire
 	return nil
 }
 

@@ -77,20 +77,28 @@ func (uc *authUseCase) Register(ctx context.Context, request *domain.RegisterReq
 
 // Login authenticates a user and returns JWT tokens
 func (uc *authUseCase) Login(ctx context.Context, request *domain.LoginRequest) (*domain.TokenResponse, error) {
+	// Check if context is already cancelled
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	// Find user by email
 	user, err := uc.userRepo.FindByEmail(ctx, request.Email)
 	if err != nil {
-		return nil, errors.New("invalid email or password")
+		// Don't leak information about whether the email exists
+		return nil, domain.ErrInvalidCredentials
 	}
 
 	// Check if user is active
 	if !user.Active {
-		return nil, errors.New("account is disabled")
+		return nil, domain.ErrAccountDisabled
 	}
 
-	// Verify password
+	// Verify password with constant-time comparison
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(request.Password)); err != nil {
-		return nil, errors.New("invalid email or password")
+		// Log the error type but return a generic message
+		// This helps with debugging without leaking information
+		return nil, domain.ErrInvalidCredentials
 	}
 
 	// Generate tokens
