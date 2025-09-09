@@ -37,11 +37,9 @@ func setupAuthUseCase() (usecase.AuthUseCase, *mocks.MockUserRepository, *mocks.
 
 func TestRegister(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
 
-		// Setup request
 		registerReq := &domain.RegisterRequest{
 			Email:     "new@example.com",
 			Username:  "newuser",
@@ -50,34 +48,23 @@ func TestRegister(t *testing.T) {
 			LastName:  "User",
 		}
 
-		// Setup mock behavior
-		// In FindByEmail and FindByUsername:
-		// - Return nil for user (first return value) since user doesn't exist
-		// - Return error for "not found" condition (second return value)
-
-		// First check if email exists (should return nil user and error for "not found")
 		mockUserRepo.On("FindByEmail", mock.Anything, registerReq.Email).
 			Return(nil, errors.New("user not found"))
 
-		// Then check if username exists (should return nil user and error for "not found")
 		mockUserRepo.On("FindByUsername", mock.Anything, registerReq.Username).
 			Return(nil, errors.New("user not found"))
 
-		// Then create the user
 		mockUserRepo.On("Create", mock.Anything, mock.MatchedBy(func(u *domain.User) bool {
-			// Password should be hashed
 			err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(registerReq.Password))
-			// Set a UUID for the user object so it's returned in the response
 			u.UUID = "test-uuid-12345"
 			return u.Email == registerReq.Email &&
 				u.Username == registerReq.Username &&
 				u.FirstName == registerReq.FirstName &&
 				u.LastName == registerReq.LastName &&
 				u.Role == "user" &&
-				err == nil // Password was correctly hashed
+				err == nil
 		})).Return(nil)
 
-		// Create the use case with our mocks
 		cfg := config.Config{
 			JWT: config.JWTConfig{
 				Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
@@ -86,10 +73,8 @@ func TestRegister(t *testing.T) {
 		}
 		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
 
-		// Call the use case
 		response, err := authUseCase.Register(context.Background(), registerReq)
 
-		// Assertions
 		require.NoError(t, err)
 		require.NotNil(t, response)
 		assert.Equal(t, registerReq.Email, response.Email)
@@ -99,16 +84,13 @@ func TestRegister(t *testing.T) {
 		assert.Equal(t, "user", response.Role)
 		assert.NotEmpty(t, response.UUID)
 
-		// Verify mock expectations
 		mockUserRepo.AssertExpectations(t)
 	})
 
 	t.Run("Email Already Exists", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
 
-		// Setup request
 		registerReq := &domain.RegisterRequest{
 			Email:     "existing@example.com",
 			Username:  "newuser",
@@ -117,7 +99,6 @@ func TestRegister(t *testing.T) {
 			LastName:  "User",
 		}
 
-		// Setup mock behavior - Email exists
 		existingUser := &domain.User{
 			ID:       1,
 			UUID:     "existing-uuid",
@@ -127,7 +108,6 @@ func TestRegister(t *testing.T) {
 		mockUserRepo.On("FindByEmail", mock.Anything, registerReq.Email).
 			Return(existingUser, nil)
 
-		// Create the use case with our mocks
 		cfg := config.Config{
 			JWT: config.JWTConfig{
 				Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
@@ -136,10 +116,8 @@ func TestRegister(t *testing.T) {
 		}
 		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
 
-		// Call the use case
 		response, err := authUseCase.Register(context.Background(), registerReq)
 
-		// Assertions
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "already exists")
 		assert.Nil(t, response)
@@ -149,11 +127,9 @@ func TestRegister(t *testing.T) {
 	})
 
 	t.Run("Username Already Exists", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
 
-		// Setup request
 		registerReq := &domain.RegisterRequest{
 			Email:     "new@example.com",
 			Username:  "existinguser",
@@ -162,12 +138,8 @@ func TestRegister(t *testing.T) {
 			LastName:  "User",
 		}
 
-		// Setup mock behavior
-		// Email doesn't exist
 		mockUserRepo.On("FindByEmail", mock.Anything, registerReq.Email).
 			Return(nil, errors.New("user not found"))
-
-		// But username exists
 		existingUser := &domain.User{
 			ID:       1,
 			UUID:     "existing-uuid",
@@ -177,7 +149,6 @@ func TestRegister(t *testing.T) {
 		mockUserRepo.On("FindByUsername", mock.Anything, registerReq.Username).
 			Return(existingUser, nil)
 
-		// Create the use case with our mocks
 		cfg := config.Config{
 			JWT: config.JWTConfig{
 				Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
@@ -189,7 +160,6 @@ func TestRegister(t *testing.T) {
 		// Call the use case
 		response, err := authUseCase.Register(context.Background(), registerReq)
 
-		// Assertions
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "already exists")
 		assert.Nil(t, response)
@@ -199,11 +169,9 @@ func TestRegister(t *testing.T) {
 	})
 
 	t.Run("Database Error", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
 
-		// Setup request
 		registerReq := &domain.RegisterRequest{
 			Email:     "new@example.com",
 			Username:  "newuser",
@@ -211,8 +179,6 @@ func TestRegister(t *testing.T) {
 			FirstName: "New",
 			LastName:  "User",
 		}
-
-		// Setup mock behavior
 		mockUserRepo.On("FindByEmail", mock.Anything, registerReq.Email).
 			Return(nil, errors.New("user not found"))
 		mockUserRepo.On("FindByUsername", mock.Anything, registerReq.Username).
@@ -220,7 +186,6 @@ func TestRegister(t *testing.T) {
 		mockUserRepo.On("Create", mock.Anything, mock.AnythingOfType("*domain.User")).
 			Return(errors.New("database error"))
 
-		// Create the use case with our mocks
 		cfg := config.Config{
 			JWT: config.JWTConfig{
 				Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
@@ -229,7 +194,6 @@ func TestRegister(t *testing.T) {
 		}
 		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
 
-		// Call the use case
 		response, err := authUseCase.Register(context.Background(), registerReq)
 
 		// Assertions
@@ -243,7 +207,6 @@ func TestRegister(t *testing.T) {
 
 func TestLogin(t *testing.T) {
 	t.Run("Success with Email", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
 
@@ -255,14 +218,10 @@ func TestLogin(t *testing.T) {
 		}
 
 		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
-
-		// Setup request
 		loginReq := &domain.LoginRequest{
 			Email:    "test@example.com",
 			Password: "password123",
 		}
-
-		// Mock user with hashed password
 		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 		mockUser := &domain.User{
 			ID:        1,
@@ -276,18 +235,12 @@ func TestLogin(t *testing.T) {
 			Active:    true,
 		}
 
-		// Setup mock behavior
 		mockUserRepo.On("FindByEmail", mock.Anything, loginReq.Email).
 			Return(mockUser, nil)
-
-		// Should store refresh token
 		mockTokenRepo.On("StoreRefreshToken", mock.Anything, mockUser.UUID, mock.AnythingOfType("string"), mock.AnythingOfType("time.Duration")).
 			Return(nil)
 
-		// Call the use case
 		response, err := authUseCase.Login(context.Background(), loginReq)
-
-		// Assertions
 		require.NoError(t, err)
 		require.NotNil(t, response)
 		assert.NotEmpty(t, response.AccessToken)
@@ -295,25 +248,20 @@ func TestLogin(t *testing.T) {
 		assert.Equal(t, "Bearer", response.TokenType)
 		assert.True(t, response.ExpiresIn > 0)
 
-		// Verify token validity
 		token, err := jwt.Parse(response.AccessToken, func(token *jwt.Token) (interface{}, error) {
 			return []byte("test-secret-key-for-jwt-token-that-is-long-enough"), nil
 		})
 		require.NoError(t, err)
 		require.True(t, token.Valid)
-
-		// Check claims
 		claims := token.Claims.(jwt.MapClaims)
 		assert.Equal(t, mockUser.UUID, claims["sub"])
 		assert.Equal(t, mockUser.Role, claims["role"])
 
-		// Verify mock expectations
 		mockUserRepo.AssertExpectations(t)
 		mockTokenRepo.AssertExpectations(t)
 	})
 
 	t.Run("Invalid Password", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
 
@@ -325,14 +273,10 @@ func TestLogin(t *testing.T) {
 		}
 
 		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
-
-		// Setup request with wrong password
 		loginReq := &domain.LoginRequest{
 			Email:    "test@example.com",
 			Password: "wrongpassword",
 		}
-
-		// Mock user with different password
 		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 		mockUser := &domain.User{
 			ID:        1,
@@ -345,15 +289,10 @@ func TestLogin(t *testing.T) {
 			Role:      "user",
 			Active:    true,
 		}
-
-		// Setup mock behavior
 		mockUserRepo.On("FindByEmail", mock.Anything, loginReq.Email).
 			Return(mockUser, nil)
 
-		// Call the use case
 		response, err := authUseCase.Login(context.Background(), loginReq)
-
-		// Assertions
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid email or password")
 		assert.Nil(t, response)
@@ -364,7 +303,6 @@ func TestLogin(t *testing.T) {
 	})
 
 	t.Run("User Not Found", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
 
@@ -376,21 +314,14 @@ func TestLogin(t *testing.T) {
 		}
 
 		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
-
-		// Setup request
 		loginReq := &domain.LoginRequest{
 			Email:    "nonexistent@example.com",
 			Password: "password123",
 		}
-
-		// Setup mock behavior
 		mockUserRepo.On("FindByEmail", mock.Anything, loginReq.Email).
 			Return(nil, errors.New("user not found"))
 
-		// Call the use case
 		response, err := authUseCase.Login(context.Background(), loginReq)
-
-		// Assertions
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid email or password")
 		assert.Nil(t, response)
@@ -403,7 +334,6 @@ func TestLogin(t *testing.T) {
 
 func TestRefreshToken(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
 
@@ -417,12 +347,9 @@ func TestRefreshToken(t *testing.T) {
 
 		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
 
-		// Setup request
 		refreshReq := &domain.RefreshTokenRequest{
 			RefreshToken: "valid-refresh-token",
 		}
-
-		// Setup mock behavior
 		mockTokenRepo.On("GetUserIDByRefreshToken", mock.Anything, "valid-refresh-token").
 			Return("user-123", nil)
 
@@ -439,19 +366,12 @@ func TestRefreshToken(t *testing.T) {
 
 		mockUserRepo.On("FindByUUID", mock.Anything, "user-123").
 			Return(mockUser, nil)
-
-		// Should delete old token
 		mockTokenRepo.On("DeleteRefreshToken", mock.Anything, "valid-refresh-token").
 			Return(nil)
-
-		// Should store new refresh token
 		mockTokenRepo.On("StoreRefreshToken", mock.Anything, "user-123", mock.AnythingOfType("string"), mock.AnythingOfType("time.Duration")).
 			Return(nil)
 
-		// Call the use case
 		response, err := authUseCase.RefreshToken(context.Background(), refreshReq)
-
-		// Assertions
 		require.NoError(t, err)
 		require.NotNil(t, response)
 		assert.NotEmpty(t, response.AccessToken)
@@ -465,7 +385,6 @@ func TestRefreshToken(t *testing.T) {
 	})
 
 	t.Run("Invalid Refresh Token", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
 
@@ -478,24 +397,17 @@ func TestRefreshToken(t *testing.T) {
 
 		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
 
-		// Setup request
 		refreshReq := &domain.RefreshTokenRequest{
 			RefreshToken: "invalid-refresh-token",
 		}
-
-		// Setup mock behavior
 		mockTokenRepo.On("GetUserIDByRefreshToken", mock.Anything, "invalid-refresh-token").
 			Return("", errors.New("token not found"))
 
-		// Call the use case
 		response, err := authUseCase.RefreshToken(context.Background(), refreshReq)
-
-		// Assertions
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid or expired refresh token")
 		assert.Nil(t, response)
 
-		// Verify mock expectations
 		mockUserRepo.AssertExpectations(t)
 		mockTokenRepo.AssertExpectations(t)
 	})
@@ -503,11 +415,8 @@ func TestRefreshToken(t *testing.T) {
 
 func TestLogout(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
-
-		// Setup config
 		cfg := config.Config{
 			JWT: config.JWTConfig{
 				Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
@@ -515,32 +424,21 @@ func TestLogout(t *testing.T) {
 			},
 		}
 
-		// Setup
 		refreshToken := "valid-refresh-token"
-
-		// Setup mock behavior
 		mockTokenRepo.On("DeleteRefreshToken", mock.Anything, refreshToken).
 			Return(nil)
 
-		// Initialize the use case with our mocks
 		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
 
-		// Call the use case
 		err := authUseCase.Logout(context.Background(), refreshToken)
-
-		// Assertions
 		require.NoError(t, err)
 
-		// Verify mock expectations
 		mockTokenRepo.AssertExpectations(t)
 	})
 
 	t.Run("Token Not Found", func(t *testing.T) {
-		// Create fresh mocks for this test
 		mockUserRepo := new(mocks.MockUserRepository)
 		mockTokenRepo := new(mocks.MockTokenRepository)
-
-		// Setup config
 		cfg := config.Config{
 			JWT: config.JWTConfig{
 				Secret:         "test-secret-key-for-jwt-token-that-is-long-enough",
@@ -548,34 +446,23 @@ func TestLogout(t *testing.T) {
 			},
 		}
 
-		// Setup
 		refreshToken := "invalid-refresh-token"
-
-		// Setup mock behavior
 		mockTokenRepo.On("DeleteRefreshToken", mock.Anything, refreshToken).
 			Return(errors.New("token not found"))
 
-		// Initialize the use case with our mocks
 		authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
 
-		// Call the use case
 		err := authUseCase.Logout(context.Background(), refreshToken)
-
-		// Assertions
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "token not found")
 
-		// Verify mock expectations
 		mockTokenRepo.AssertExpectations(t)
 	})
 }
 
 func TestVerifyToken(t *testing.T) {
 	t.Run("Valid Token", func(t *testing.T) {
-		// Setup
 		authUseCase, _, _ := setupAuthUseCase()
-
-		// Create a valid token
 		claims := jwt.MapClaims{
 			"sub":  "test-uuid",
 			"role": "user",
@@ -588,37 +475,28 @@ func TestVerifyToken(t *testing.T) {
 		signedToken, err := token.SignedString([]byte("test-secret-key-for-jwt-token-that-is-long-enough"))
 		require.NoError(t, err)
 
-		// Call the use case
 		verifiedClaims, err := authUseCase.VerifyToken(signedToken)
 
-		// Assertions
 		require.NoError(t, err)
 		assert.Equal(t, claims["sub"], verifiedClaims["sub"])
 		assert.Equal(t, claims["role"], verifiedClaims["role"])
 	})
 
 	t.Run("Invalid Token Format", func(t *testing.T) {
-		// Setup
 		authUseCase, _, _ := setupAuthUseCase()
 
-		// Call with invalid token
 		verifiedClaims, err := authUseCase.VerifyToken("invalid-token-format")
-
-		// Assertions
 		require.Error(t, err)
 		assert.Nil(t, verifiedClaims)
 	})
 
 	t.Run("Expired Token", func(t *testing.T) {
-		// Setup
 		authUseCase, _, _ := setupAuthUseCase()
-
-		// Create an expired token
 		claims := jwt.MapClaims{
 			"sub":  "test-uuid",
 			"role": "user",
 			"iat":  time.Now().Add(-2 * time.Hour).Unix(),
-			"exp":  time.Now().Add(-1 * time.Hour).Unix(), // Expired 1 hour ago
+			"exp":  time.Now().Add(-1 * time.Hour).Unix(),
 			"iss":  "auth-service-test",
 		}
 
@@ -626,10 +504,8 @@ func TestVerifyToken(t *testing.T) {
 		signedToken, err := token.SignedString([]byte("test-secret-key-for-jwt-token-that-is-long-enough"))
 		require.NoError(t, err)
 
-		// Call the use case
 		verifiedClaims, err := authUseCase.VerifyToken(signedToken)
 
-		// Assertions
 		require.Error(t, err)
 		assert.Nil(t, verifiedClaims)
 		assert.Contains(t, err.Error(), "expired")

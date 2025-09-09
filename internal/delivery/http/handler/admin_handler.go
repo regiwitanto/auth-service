@@ -24,11 +24,9 @@ func NewAdminHandler(authUseCase usecase.AuthUseCase, cfg *config.Config) *Admin
 	}
 }
 
-// RegisterRoutes registers all admin routes
 func (h *AdminHandler) RegisterRoutes(e *echo.Echo) {
 	api := e.Group("/api/v1")
 
-	// JWT middleware for protected routes
 	jwtConfig := echojwt.Config{
 		SigningKey:  []byte(h.config.JWT.Secret),
 		TokenLookup: "header:Authorization,query:token",
@@ -39,7 +37,6 @@ func (h *AdminHandler) RegisterRoutes(e *echo.Echo) {
 	}
 	jwtMiddleware := echojwt.WithConfig(jwtConfig)
 
-	// Admin routes
 	admin := api.Group("/admin")
 	admin.Use(jwtMiddleware)
 	admin.Use(h.rbacMiddleware.IsAdmin())
@@ -47,7 +44,6 @@ func (h *AdminHandler) RegisterRoutes(e *echo.Echo) {
 	admin.GET("/stats", h.GetSystemStats)
 }
 
-// GetAllUsers returns a list of all users
 // @Summary Get all users
 // @Description Get a list of all users in the system (admin access required)
 // @Tags admin
@@ -69,7 +65,6 @@ func (h *AdminHandler) GetAllUsers(c echo.Context) error {
 	})
 }
 
-// GetSystemStats returns system statistics
 // @Summary Get system stats
 // @Description Get system statistics and metrics (admin access required)
 // @Tags admin

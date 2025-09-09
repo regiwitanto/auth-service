@@ -12,7 +12,6 @@ import (
 )
 
 func TestRateLimiter(t *testing.T) {
-	// Setup
 	e := echo.New()
 	handler := func(c echo.Context) error {
 		return c.String(http.StatusOK, "success")
@@ -21,10 +20,10 @@ func TestRateLimiter(t *testing.T) {
 	t.Run("Allow requests within rate limit", func(t *testing.T) {
 		// Create a fresh rate limiter for this test with a higher limit
 		rateLimiter := middleware.NewRateLimiterWithConfig(middleware.RateLimiterConfig{
-			Requests:  100,         // Allow 100 requests
-			Window:    time.Minute, // per minute
-			BurstSize: 20,          // with a burst of 20
-			Strategy:  "ip",        // IP-based limiting
+			Requests:  100,
+			Window:    time.Minute,
+			BurstSize: 20,
+			Strategy:  "ip",
 		})
 		middlewareFunc := rateLimiter.Limit()(handler)
 
@@ -46,17 +45,16 @@ func TestRateLimiter(t *testing.T) {
 	})
 
 	t.Run("Block requests exceeding rate limit", func(t *testing.T) {
-		// Skip this test - the issue is with the assertion
-		t.Skip("Skipping rate limit test - will fix in a future update") // Test is skipped
+		t.Skip("Skipping rate limit test - will fix in a future update")
 	})
 
 	t.Run("Different IPs have separate rate limits", func(t *testing.T) {
 		// Setup a fresh moderate rate limiter for this test
 		config := middleware.RateLimiterConfig{
-			Requests:  10,          // 10 requests
-			Window:    time.Minute, // per minute
-			BurstSize: 5,           // with a burst of 5
-			Strategy:  "ip",        // IP-based
+			Requests:  10,
+			Window:    time.Minute,
+			BurstSize: 5,
+			Strategy:  "ip",
 		}
 		limiter := middleware.NewRateLimiterWithConfig(config)
 		limitFunc := limiter.Limit()(handler)

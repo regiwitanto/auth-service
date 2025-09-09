@@ -6,7 +6,6 @@ import (
 	"github.com/regiwitanto/auth-service/config"
 )
 
-// MockConfig creates a mock configuration for testing
 func MockConfig() *config.Config {
 	return &config.Config{
 		Environment: "test",

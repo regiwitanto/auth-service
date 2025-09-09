@@ -13,11 +13,8 @@ import (
 )
 
 func TestRequireRole(t *testing.T) {
-	// Setup
 	e := echo.New()
 	rbac := middleware.NewRBACMiddleware()
-
-	// Create test handler
 	handler := func(c echo.Context) error {
 		return c.String(http.StatusOK, "success")
 	}
@@ -58,16 +55,13 @@ func TestRequireRole(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Create middleware
 			rbacMiddleware := rbac.RequireRole(tc.roles...)
 			middlewareFunc := rbacMiddleware(handler)
 
-			// Create request
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			// Set token with role claim
 			token := jwt.New(jwt.SigningMethodHS256)
 			claims := token.Claims.(jwt.MapClaims)
 			claims["sub"] = "test-user-id"
@@ -76,10 +70,7 @@ func TestRequireRole(t *testing.T) {
 			claims["exp"] = time.Now().Add(time.Hour).Unix()
 			c.Set("user", token)
 
-			// Execute middleware
 			err := middlewareFunc(c)
-
-			// Assertions
 			if tc.expectedError != "" {
 				if he, ok := err.(*echo.HTTPError); ok {
 					assert.Equal(t, tc.expectedCode, he.Code)
@@ -97,26 +88,20 @@ func TestRequireRole(t *testing.T) {
 }
 
 func TestIsAdmin(t *testing.T) {
-	// Setup
 	e := echo.New()
 	rbac := middleware.NewRBACMiddleware()
-
-	// Create test handler
 	handler := func(c echo.Context) error {
 		return c.String(http.StatusOK, "admin access")
 	}
 
-	// Create middleware
 	adminMiddleware := rbac.IsAdmin()
 	middlewareFunc := adminMiddleware(handler)
 
 	t.Run("Allow admin access", func(t *testing.T) {
-		// Create request
 		req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		// Set token with admin role
 		token := jwt.New(jwt.SigningMethodHS256)
 		claims := token.Claims.(jwt.MapClaims)
 		claims["sub"] = "admin-user-id"
@@ -125,22 +110,17 @@ func TestIsAdmin(t *testing.T) {
 		claims["exp"] = time.Now().Add(time.Hour).Unix()
 		c.Set("user", token)
 
-		// Execute middleware
 		err := middlewareFunc(c)
-
-		// Assert - admin should be allowed
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "admin access", rec.Body.String())
 	})
 
 	t.Run("Deny non-admin access", func(t *testing.T) {
-		// Create request
 		req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		// Set token with regular user role
 		token := jwt.New(jwt.SigningMethodHS256)
 		claims := token.Claims.(jwt.MapClaims)
 		claims["sub"] = "regular-user-id"
@@ -149,10 +129,7 @@ func TestIsAdmin(t *testing.T) {
 		claims["exp"] = time.Now().Add(time.Hour).Unix()
 		c.Set("user", token)
 
-		// Execute middleware
 		err := middlewareFunc(c)
-
-		// Assert - regular user should be denied
 		httpError, ok := err.(*echo.HTTPError)
 		assert.True(t, ok)
 		assert.Equal(t, http.StatusForbidden, httpError.Code)
@@ -160,15 +137,11 @@ func TestIsAdmin(t *testing.T) {
 	})
 
 	t.Run("Deny when no token present", func(t *testing.T) {
-		// Create request without token
 		req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		// Execute middleware
 		err := middlewareFunc(c)
-
-		// Assert - should be denied
 		httpError, ok := err.(*echo.HTTPError)
 		assert.True(t, ok)
 		assert.Equal(t, http.StatusUnauthorized, httpError.Code)

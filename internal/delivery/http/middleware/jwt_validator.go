@@ -76,7 +76,6 @@ func (m *JWTValidatorMiddleware) ValidateToken() echo.MiddlewareFunc {
 	}
 }
 
-// shouldSkip determines if the current route should skip authentication
 func shouldSkip(c echo.Context) bool {
 	path := c.Path()
 

@@ -130,7 +130,6 @@ func (h *AuthHandler) Login(c echo.Context) error {
 
 	request.Email = strings.TrimSpace(request.Email)
 	if err := h.validator.Struct(request); err != nil {
-		// Extract validation errors for better user feedback
 		validationErrors := []map[string]interface{}{}
 
 		if validationErrs, ok := err.(validator.ValidationErrors); ok {
@@ -149,25 +148,22 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		})
 	}
 
-	// Call the use case with timeout context
 	response, err := h.authUseCase.Login(ctx, &request)
 	if err != nil {
-		// Differentiate between different error types
 		switch {
 		case ctx.Err() != nil:
 			return c.JSON(http.StatusGatewayTimeout, map[string]string{
 				"error": "Login request timed out",
 			})
-		case errors.Is(err, domain.ErrInvalidCredentials): // Add this error type to your domain
+		case errors.Is(err, domain.ErrInvalidCredentials):
 			return c.JSON(http.StatusUnauthorized, map[string]string{
 				"error": "Invalid email or password",
 			})
-		case errors.Is(err, domain.ErrAccountDisabled): // Add this error type to your domain
+		case errors.Is(err, domain.ErrAccountDisabled):
 			return c.JSON(http.StatusForbidden, map[string]string{
 				"error": "Account is disabled",
 			})
 		default:
-			// Log the actual error for debugging but don't expose it to the client
 			c.Logger().Error("Login error:", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "An unexpected error occurred during login",
@@ -186,14 +182,12 @@ func (h *AuthHandler) RefreshToken(c echo.Context) error {
 		})
 	}
 
-	// Validate the request
 	if err := h.validator.Struct(request); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Validation failed: " + err.Error(),
 		})
 	}
 
-	// Call the use case
 	response, err := h.authUseCase.RefreshToken(c.Request().Context(), &request)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
@@ -205,7 +199,6 @@ func (h *AuthHandler) RefreshToken(c echo.Context) error {
 }
 
 func (h *AuthHandler) Logout(c echo.Context) error {
-	// Extract the refresh token from the request
 	var request domain.RefreshTokenRequest
 	if err := c.Bind(&request); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -213,7 +206,6 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 		})
 	}
 
-	// Call the use case
 	if err := h.authUseCase.Logout(c.Request().Context(), request.RefreshToken); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
@@ -226,7 +218,6 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 }
 
 func (h *AuthHandler) GetUserProfile(c echo.Context) error {
-	// Extract user ID from JWT token
 	userID, err := h.extractUserID(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
@@ -234,7 +225,6 @@ func (h *AuthHandler) GetUserProfile(c echo.Context) error {
 		})
 	}
 
-	// Call the use case
 	response, err := h.authUseCase.GetUserProfile(c.Request().Context(), userID)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{
@@ -253,14 +243,12 @@ func (h *AuthHandler) ForgotPassword(c echo.Context) error {
 		})
 	}
 
-	// Validate the request
 	if err := h.validator.Struct(request); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Validation failed: " + err.Error(),
 		})
 	}
 
-	// Call the use case
 	err := h.authUseCase.ForgotPassword(c.Request().Context(), &request)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -268,7 +256,6 @@ func (h *AuthHandler) ForgotPassword(c echo.Context) error {
 		})
 	}
 
-	// Always return success, even if email doesn't exist (security best practice)
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "If your email is registered, you will receive password reset instructions",
 	})
@@ -282,14 +269,12 @@ func (h *AuthHandler) ResetPassword(c echo.Context) error {
 		})
 	}
 
-	// Validate the request
 	if err := h.validator.Struct(request); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Validation failed: " + err.Error(),
 		})
 	}
 
-	// Call the use case
 	if err := h.authUseCase.ResetPassword(c.Request().Context(), &request); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
@@ -302,8 +287,6 @@ func (h *AuthHandler) ResetPassword(c echo.Context) error {
 }
 
 func (h *AuthHandler) extractUserID(c echo.Context) (string, error) {
-	// Get the token from the context (set by JWT middleware)
-	// First check if the userID has been directly set (for tests)
 	if userID, ok := c.Get("userID").(string); ok && userID != "" {
 		return userID, nil
 	}
@@ -315,13 +298,11 @@ func (h *AuthHandler) extractUserID(c echo.Context) (string, error) {
 			return "", echo.NewHTTPError(http.StatusUnauthorized, "Missing authorization header")
 		}
 
-		// Clean up and extract the token from the Bearer token
 		authHeader = strings.TrimSpace(authHeader)
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			return "", echo.NewHTTPError(http.StatusUnauthorized, "Invalid authorization format")
 		}
 
-		// Extract token and trim any spaces
 		token := strings.TrimSpace(authHeader[7:])
 
 		// Verify the token manually

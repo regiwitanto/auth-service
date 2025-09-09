@@ -7,7 +7,6 @@ import (
 	"github.com/regiwitanto/auth-service/config"
 )
 
-// CreateTestConfig creates a test configuration
 func CreateTestConfig() (*config.Config, error) {
 	return &config.Config{
 		Server: config.ServerConfig{
@@ -34,7 +33,6 @@ func CreateTestConfig() (*config.Config, error) {
 	}, nil
 }
 
-// CreateTestToken creates a JWT token for testing
 func CreateTestToken(userID, username, role string, expiration time.Duration) (string, error) {
 	cfg, err := CreateTestConfig()
 	if err != nil {

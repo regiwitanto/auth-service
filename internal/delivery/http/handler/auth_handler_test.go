@@ -20,7 +20,6 @@ import (
 )
 
 func TestRegister(t *testing.T) {
-	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
 	mockConfig := mocks.MockConfig()
@@ -88,28 +87,21 @@ func TestRegister(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mock
 			mockAuthUseCase.ExpectedCalls = nil
 			mockAuthUseCase.Calls = nil
 
-			// Setup mock behavior
 			test.mockBehavior()
 
-			// Create request
 			jsonBody, _ := json.Marshal(test.requestBody)
 			req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(jsonBody))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			// Perform request
 			err := authHandler.Register(c)
 
-			// Assertions
 			assert.NoError(t, err)
 			assert.Equal(t, test.expectedStatus, rec.Code)
-
-			// Verify response structure
 			var response map[string]interface{}
 			json.Unmarshal(rec.Body.Bytes(), &response)
 
@@ -130,7 +122,6 @@ func TestRegister(t *testing.T) {
 }
 
 func TestLogin(t *testing.T) {
-	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
 	mockConfig := mocks.MockConfig()
@@ -189,28 +180,21 @@ func TestLogin(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mock
 			mockAuthUseCase.ExpectedCalls = nil
 			mockAuthUseCase.Calls = nil
 
-			// Setup mock behavior
 			test.mockBehavior()
 
-			// Create request
 			jsonBody, _ := json.Marshal(test.requestBody)
 			req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(jsonBody))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			// Perform request
 			err := authHandler.Login(c)
 
-			// Assertions
 			assert.NoError(t, err)
 			assert.Equal(t, test.expectedStatus, rec.Code)
-
-			// Verify response structure
 			var response map[string]interface{}
 			json.Unmarshal(rec.Body.Bytes(), &response)
 
@@ -230,7 +214,6 @@ func TestLogin(t *testing.T) {
 }
 
 func TestRefreshToken(t *testing.T) {
-	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
 	mockConfig := mocks.MockConfig()
@@ -277,28 +260,21 @@ func TestRefreshToken(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mock
 			mockAuthUseCase.ExpectedCalls = nil
 			mockAuthUseCase.Calls = nil
 
-			// Setup mock behavior
 			test.mockBehavior()
 
-			// Create request
 			jsonBody, _ := json.Marshal(test.requestBody)
 			req := httptest.NewRequest(http.MethodPost, "/auth/refresh", bytes.NewReader(jsonBody))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			// Perform request
 			err := authHandler.RefreshToken(c)
 
-			// Assertions
 			assert.NoError(t, err)
 			assert.Equal(t, test.expectedStatus, rec.Code)
-
-			// Verify response structure
 			var response map[string]interface{}
 			json.Unmarshal(rec.Body.Bytes(), &response)
 
@@ -317,7 +293,6 @@ func TestRefreshToken(t *testing.T) {
 }
 
 func TestLogout(t *testing.T) {
-	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
 	mockConfig := mocks.MockConfig()
@@ -356,28 +331,21 @@ func TestLogout(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mock
 			mockAuthUseCase.ExpectedCalls = nil
 			mockAuthUseCase.Calls = nil
 
-			// Setup mock behavior
 			test.mockBehavior()
 
-			// Create request
 			jsonBody, _ := json.Marshal(test.requestBody)
 			req := httptest.NewRequest(http.MethodPost, "/auth/logout", bytes.NewReader(jsonBody))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			// Perform request
 			err := authHandler.Logout(c)
 
-			// Assertions
 			assert.NoError(t, err)
 			assert.Equal(t, test.expectedStatus, rec.Code)
-
-			// Verify response structure
 			var response map[string]interface{}
 			json.Unmarshal(rec.Body.Bytes(), &response)
 
@@ -395,7 +363,6 @@ func TestLogout(t *testing.T) {
 }
 
 func TestGetProfile(t *testing.T) {
-	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
 	mockConfig := mocks.MockConfig()
@@ -449,27 +416,20 @@ func TestGetProfile(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mock
 			mockAuthUseCase.ExpectedCalls = nil
 			mockAuthUseCase.Calls = nil
 
-			// Setup mock behavior
 			test.mockBehavior()
 
-			// Create request
 			req := httptest.NewRequest(http.MethodGet, "/auth/profile", nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 			test.setupContext(c)
 
-			// Perform request
 			err := authHandler.GetUserProfile(c)
 
-			// Assertions
 			assert.NoError(t, err)
 			assert.Equal(t, test.expectedStatus, rec.Code)
-
-			// Verify response structure
 			var response map[string]interface{}
 			json.Unmarshal(rec.Body.Bytes(), &response)
 

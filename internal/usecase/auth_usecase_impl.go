@@ -94,7 +94,6 @@ func (uc *authUseCase) Login(ctx context.Context, request *domain.LoginRequest) 
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	// Store refresh token in Redis
 	if err := uc.tokenRepo.StoreRefreshToken(ctx, user.UUID, refreshToken, uc.config.JWT.RefreshTokenExp); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
@@ -151,21 +150,16 @@ func (uc *authUseCase) Logout(ctx context.Context, token string) error {
 }
 
 func (uc *authUseCase) GetUserProfile(ctx context.Context, userID string) (*domain.UserResponse, error) {
-	// Find user by UUID
 	user, err := uc.userRepo.FindByUUID(ctx, userID)
 	if err != nil {
 		return nil, errors.New("user not found")
 	}
-
-	// Return the user without sensitive data
 	response := user.ToResponse()
 	return &response, nil
 }
 
 func (uc *authUseCase) VerifyToken(tokenString string) (map[string]interface{}, error) {
-	// Parse the token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Validate the signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -176,18 +170,13 @@ func (uc *authUseCase) VerifyToken(tokenString string) (map[string]interface{}, 
 		return nil, err
 	}
 
-	// Check if the token is valid
 	if !token.Valid {
 		return nil, errors.New("invalid token")
 	}
-
-	// Extract claims
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return nil, errors.New("invalid token claims")
 	}
-
-	// Convert claims to map
 	claimsMap := make(map[string]interface{})
 	for key, value := range claims {
 		claimsMap[key] = value
@@ -197,7 +186,6 @@ func (uc *authUseCase) VerifyToken(tokenString string) (map[string]interface{}, 
 }
 
 func (uc *authUseCase) generateAccessToken(user *domain.User) (string, error) {
-	// Set claims
 	claims := jwt.MapClaims{
 		"sub":   user.UUID,
 		"name":  user.Username,
@@ -206,11 +194,8 @@ func (uc *authUseCase) generateAccessToken(user *domain.User) (string, error) {
 		"exp":   time.Now().Add(uc.config.JWT.AccessTokenExp).Unix(),
 		"iat":   time.Now().Unix(),
 	}
-
-	// Create token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	// Sign token
 	tokenString, err := token.SignedString([]byte(uc.config.JWT.Secret))
 	if err != nil {
 		return "", err
@@ -220,17 +205,14 @@ func (uc *authUseCase) generateAccessToken(user *domain.User) (string, error) {
 }
 
 func (uc *authUseCase) generateRefreshToken(user *domain.User) (string, error) {
-	// Set claims
 	claims := jwt.MapClaims{
 		"sub": user.UUID,
 		"exp": time.Now().Add(uc.config.JWT.RefreshTokenExp).Unix(),
 		"iat": time.Now().Unix(),
 	}
 
-	// Create token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	// Sign token
 	tokenString, err := token.SignedString([]byte(uc.config.JWT.Secret))
 	if err != nil {
 		return "", err
@@ -249,7 +231,6 @@ func (uc *authUseCase) generateSecureToken(length int) (string, error) {
 }
 
 func (uc *authUseCase) ForgotPassword(ctx context.Context, request *domain.ForgotPasswordRequest) error {
-	// Check if user exists with the provided email
 	user, err := uc.userRepo.FindByEmail(ctx, request.Email)
 	if err != nil {
 		// Don't reveal that the email doesn't exist for security reasons
@@ -257,13 +238,11 @@ func (uc *authUseCase) ForgotPassword(ctx context.Context, request *domain.Forgo
 		return nil
 	}
 
-	// Generate a secure token
 	token, err := uc.generateSecureToken(32)
 	if err != nil {
 		return fmt.Errorf("failed to generate reset token: %w", err)
 	}
 
-	// Store the token in Redis with the user's email
 	err = uc.tokenRepo.StorePasswordResetToken(ctx, user.Email, token, 15*time.Minute)
 	if err != nil {
 		return fmt.Errorf("failed to store reset token: %w", err)
@@ -278,25 +257,21 @@ func (uc *authUseCase) ForgotPassword(ctx context.Context, request *domain.Forgo
 }
 
 func (uc *authUseCase) ResetPassword(ctx context.Context, request *domain.ResetPasswordRequest) error {
-	// Verify the token and get the associated email
 	email, err := uc.tokenRepo.GetEmailByResetToken(ctx, request.Token)
 	if err != nil {
 		return errors.New("invalid or expired reset token")
 	}
 
-	// Hash the new password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Update the user's password
 	err = uc.userRepo.UpdatePassword(ctx, email, string(hashedPassword))
 	if err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 
-	// Delete the used token
 	err = uc.tokenRepo.DeletePasswordResetToken(ctx, request.Token)
 	if err != nil {
 		// This is not critical, we can continue even if this fails

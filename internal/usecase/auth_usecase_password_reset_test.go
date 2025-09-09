@@ -15,21 +15,15 @@ import (
 )
 
 func TestForgotPassword(t *testing.T) {
-	// Setup mocks
 	mockUserRepo := new(mocks.MockUserRepository)
 	mockTokenRepo := new(mocks.MockTokenRepository)
-
-	// Setup config
 	cfg := config.Config{
 		Server: config.ServerConfig{
 			BaseURL: "http://localhost:8080",
 		},
 	}
 
-	// Create use case
 	authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
-
-	// Setup test cases
 	tests := []struct {
 		name          string
 		email         string
@@ -90,24 +84,18 @@ func TestForgotPassword(t *testing.T) {
 		},
 	}
 
-	// Run tests
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mocks
 			mockUserRepo.ExpectedCalls = nil
 			mockTokenRepo.ExpectedCalls = nil
 			mockUserRepo.Calls = nil
 			mockTokenRepo.Calls = nil
 
-			// Setup mocks
 			test.setupMocks()
 
-			// Execute
 			err := authUseCase.ForgotPassword(context.Background(), &domain.ForgotPasswordRequest{
 				Email: test.email,
 			})
-
-			// Assert
 			if test.expectedError {
 				assert.Error(t, err)
 			} else {
@@ -122,17 +110,11 @@ func TestForgotPassword(t *testing.T) {
 }
 
 func TestResetPassword(t *testing.T) {
-	// Setup mocks
 	mockUserRepo := new(mocks.MockUserRepository)
 	mockTokenRepo := new(mocks.MockTokenRepository)
-
-	// Setup config
 	cfg := config.Config{}
 
-	// Create use case
 	authUseCase := usecase.NewAuthUseCase(mockUserRepo, mockTokenRepo, cfg)
-
-	// Setup test cases
 	tests := []struct {
 		name          string
 		token         string
@@ -191,25 +173,18 @@ func TestResetPassword(t *testing.T) {
 		},
 	}
 
-	// Run tests
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mocks
 			mockUserRepo.ExpectedCalls = nil
 			mockTokenRepo.ExpectedCalls = nil
 			mockUserRepo.Calls = nil
 			mockTokenRepo.Calls = nil
-
-			// Setup mocks
 			test.setupMocks()
 
-			// Execute
 			err := authUseCase.ResetPassword(context.Background(), &domain.ResetPasswordRequest{
 				Token:    test.token,
 				Password: test.password,
 			})
-
-			// Assert
 			if test.expectedError {
 				assert.Error(t, err)
 			} else {

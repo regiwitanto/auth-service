@@ -12,13 +12,10 @@ import (
 )
 
 func TestGetAllUsers(t *testing.T) {
-	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
 	mockConfig := mocks.MockConfig()
 	adminHandler := handler.NewAdminHandler(mockAuthUseCase, mockConfig)
-
-	// Create JWT claims for admin user
 	adminClaims := make(map[string]interface{})
 	adminClaims["sub"] = "admin-123"
 	adminClaims["role"] = "admin"
@@ -41,24 +38,18 @@ func TestGetAllUsers(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mock
 			mockAuthUseCase.ExpectedCalls = nil
 			mockAuthUseCase.Calls = nil
 
-			// Create request
 			req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 			test.setupContext(c)
 
-			// Perform request
 			err := adminHandler.GetAllUsers(c)
 
-			// Assertions
 			assert.NoError(t, err)
 			assert.Equal(t, test.expectedStatus, rec.Code)
-
-			// Check response structure
 			if !test.expectedError {
 				assert.Contains(t, rec.Body.String(), "users")
 				assert.Contains(t, rec.Body.String(), "message")
@@ -68,13 +59,10 @@ func TestGetAllUsers(t *testing.T) {
 }
 
 func TestGetSystemStats(t *testing.T) {
-	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
 	mockConfig := mocks.MockConfig()
 	adminHandler := handler.NewAdminHandler(mockAuthUseCase, mockConfig)
-
-	// Create JWT claims for admin user
 	adminClaims := make(map[string]interface{})
 	adminClaims["sub"] = "admin-123"
 	adminClaims["role"] = "admin"
@@ -97,17 +85,13 @@ func TestGetSystemStats(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mock
 			mockAuthUseCase.ExpectedCalls = nil
 			mockAuthUseCase.Calls = nil
 
-			// Create request
 			req := httptest.NewRequest(http.MethodGet, "/admin/stats", nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 			test.setupContext(c)
-
-			// Perform request
 			err := adminHandler.GetSystemStats(c)
 
 			// Assertions

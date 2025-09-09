@@ -95,7 +95,6 @@ func (rl *RateLimiter) getLimiter(identifier string) *rate.Limiter {
 		rl.lastSeen[identifier] = time.Now()
 		rl.mu.Unlock()
 	} else {
-		// Update the last seen time for this identifier
 		rl.mu.Lock()
 		rl.lastSeen[identifier] = time.Now()
 		rl.mu.Unlock()

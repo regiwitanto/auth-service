@@ -7,7 +7,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// RedisClient interface defines the Redis operations needed by the token repository
 type RedisClient interface {
 	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.StatusCmd
 	Get(ctx context.Context, key string) *redis.StringCmd
@@ -23,8 +22,6 @@ type TokenRepository interface {
 	GetUserIDByRefreshToken(ctx context.Context, token string) (string, error)
 	DeleteRefreshToken(ctx context.Context, token string) error
 	DeleteAllUserTokens(ctx context.Context, userID string) error
-
-	// Password reset token methods
 	StorePasswordResetToken(ctx context.Context, email string, token string, expiry time.Duration) error
 	GetEmailByResetToken(ctx context.Context, token string) (string, error)
 	DeletePasswordResetToken(ctx context.Context, token string) error

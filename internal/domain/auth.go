@@ -2,7 +2,6 @@ package domain
 
 import "errors"
 
-// Common error types for authentication operations
 var (
 	ErrInvalidCredentials = errors.New("invalid email or password")
 	ErrAccountDisabled    = errors.New("account is disabled")

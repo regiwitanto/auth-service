@@ -17,7 +17,6 @@ import (
 )
 
 func TestForgotPassword(t *testing.T) {
-	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
 	mockConfig := mocks.MockConfig()
@@ -65,24 +64,19 @@ func TestForgotPassword(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mock
 			mockAuthUseCase.ExpectedCalls = nil
 			mockAuthUseCase.Calls = nil
 
-			// Setup mock behavior
 			test.mockBehavior()
 
-			// Create request
 			requestJSON, _ := json.Marshal(test.requestBody)
 			req := httptest.NewRequest(http.MethodPost, "/auth/forgot-password", bytes.NewReader(requestJSON))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			// Perform request
 			err := authHandler.ForgotPassword(c)
 
-			// Assertions
 			assert.NoError(t, err)
 			assert.Equal(t, test.expectedStatus, rec.Code)
 
@@ -95,14 +89,12 @@ func TestForgotPassword(t *testing.T) {
 				assert.Contains(t, response, "error")
 			}
 
-			// Verify all expected mocks were called
 			mockAuthUseCase.AssertExpectations(t)
 		})
 	}
 }
 
 func TestResetPassword(t *testing.T) {
-	// Setup
 	e := echo.New()
 	mockAuthUseCase := new(mocks.MockAuthUseCase)
 	mockConfig := mocks.MockConfig()
@@ -153,24 +145,19 @@ func TestResetPassword(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Reset mock
 			mockAuthUseCase.ExpectedCalls = nil
 			mockAuthUseCase.Calls = nil
 
-			// Setup mock behavior
 			test.mockBehavior()
 
-			// Create request
 			requestJSON, _ := json.Marshal(test.requestBody)
 			req := httptest.NewRequest(http.MethodPost, "/auth/reset-password", bytes.NewReader(requestJSON))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			// Perform request
 			err := authHandler.ResetPassword(c)
 
-			// Assertions
 			assert.NoError(t, err)
 			assert.Equal(t, test.expectedStatus, rec.Code)
 
@@ -183,7 +170,6 @@ func TestResetPassword(t *testing.T) {
 				assert.Contains(t, response, "error")
 			}
 
-			// Verify all expected mocks were called
 			mockAuthUseCase.AssertExpectations(t)
 		})
 	}
