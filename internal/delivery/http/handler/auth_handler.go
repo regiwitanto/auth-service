@@ -13,6 +13,7 @@ import (
 	"github.com/regiwitanto/auth-service/config"
 	customMiddleware "github.com/regiwitanto/auth-service/internal/delivery/http/middleware"
 	"github.com/regiwitanto/auth-service/internal/domain"
+	"github.com/regiwitanto/auth-service/internal/pkg/logger"
 	"github.com/regiwitanto/auth-service/internal/usecase"
 )
 
@@ -93,14 +94,25 @@ func (h *AuthHandler) RegisterRoutes(e *echo.Echo) {
 }
 
 func (h *AuthHandler) Register(c echo.Context) error {
+	logger.Info("Register request received", 
+		logger.String("ip", c.RealIP()),
+		logger.String("user_agent", c.Request().UserAgent()))
+		
 	var request domain.RegisterRequest
 	if err := c.Bind(&request); err != nil {
+		logger.Warn("Failed to bind register request", 
+			logger.String("ip", c.RealIP()),
+			logger.Err(err))
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Invalid request format",
 		})
 	}
 
 	if err := h.validator.Struct(request); err != nil {
+		logger.Warn("Register validation failed", 
+			logger.String("email", request.Email),
+			logger.String("username", request.Username),
+			logger.Err(err))
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Validation failed: " + err.Error(),
 		})
@@ -108,20 +120,34 @@ func (h *AuthHandler) Register(c echo.Context) error {
 
 	response, err := h.authUseCase.Register(c.Request().Context(), &request)
 	if err != nil {
+		logger.Warn("Register use case failed", 
+			logger.String("email", request.Email),
+			logger.String("username", request.Username),
+			logger.Err(err))
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
 		})
 	}
 
+	logger.Info("User registered successfully via API", 
+		logger.String("email", request.Email),
+		logger.String("username", request.Username))
 	return c.JSON(http.StatusCreated, response)
 }
 
 func (h *AuthHandler) Login(c echo.Context) error {
+	logger.Info("Login request received", 
+		logger.String("ip", c.RealIP()),
+		logger.String("user_agent", c.Request().UserAgent()))
+		
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
 	defer cancel()
 
 	var request domain.LoginRequest
 	if err := c.Bind(&request); err != nil {
+		logger.Warn("Failed to bind login request", 
+			logger.String("ip", c.RealIP()),
+			logger.Err(err))
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error":   "Invalid request format",
 			"details": err.Error(),
@@ -129,6 +155,8 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	}
 
 	request.Email = strings.TrimSpace(request.Email)
+	logger.Debug("Login request validation", logger.String("email", request.Email))
+	
 	if err := h.validator.Struct(request); err != nil {
 		validationErrors := []map[string]interface{}{}
 
@@ -142,6 +170,10 @@ func (h *AuthHandler) Login(c echo.Context) error {
 			}
 		}
 
+		logger.Warn("Login validation failed", 
+			logger.String("email", request.Email),
+			logger.Any("validation_errors", validationErrors))
+		
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error":   "Validation failed",
 			"details": validationErrors,
@@ -152,37 +184,62 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	if err != nil {
 		switch {
 		case ctx.Err() != nil:
+			logger.Warn("Login request timed out", 
+				logger.String("email", request.Email),
+				logger.Err(ctx.Err()))
 			return c.JSON(http.StatusGatewayTimeout, map[string]string{
 				"error": "Login request timed out",
 			})
 		case errors.Is(err, domain.ErrInvalidCredentials):
+			logger.Warn("Failed login attempt: invalid credentials", 
+				logger.String("email", request.Email),
+				logger.String("ip", c.RealIP()))
 			return c.JSON(http.StatusUnauthorized, map[string]string{
 				"error": "Invalid email or password",
 			})
 		case errors.Is(err, domain.ErrAccountDisabled):
+			logger.Warn("Login attempt for disabled account", 
+				logger.String("email", request.Email),
+				logger.String("ip", c.RealIP()))
 			return c.JSON(http.StatusForbidden, map[string]string{
 				"error": "Account is disabled",
 			})
 		default:
-			c.Logger().Error("Login error:", err)
+			logger.Error("Unexpected login error", 
+				logger.String("email", request.Email),
+				logger.String("ip", c.RealIP()),
+				logger.Err(err))
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "An unexpected error occurred during login",
 			})
 		}
 	}
 
+	logger.Info("User logged in successfully", 
+		logger.String("email", request.Email),
+		logger.String("ip", c.RealIP()))
 	return c.JSON(http.StatusOK, response)
 }
 
 func (h *AuthHandler) RefreshToken(c echo.Context) error {
+	logger.Debug("Refresh token request received", 
+		logger.String("ip", c.RealIP()),
+		logger.String("user_agent", c.Request().UserAgent()))
+		
 	var request domain.RefreshTokenRequest
 	if err := c.Bind(&request); err != nil {
+		logger.Warn("Failed to bind refresh token request", 
+			logger.String("ip", c.RealIP()),
+			logger.Err(err))
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Invalid request format",
 		})
 	}
 
 	if err := h.validator.Struct(request); err != nil {
+		logger.Warn("Refresh token validation failed", 
+			logger.String("ip", c.RealIP()),
+			logger.Err(err))
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Validation failed: " + err.Error(),
 		})

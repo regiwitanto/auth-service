@@ -11,6 +11,7 @@ import (
 	"github.com/golang-jwt/jwt"
 	"github.com/regiwitanto/auth-service/config"
 	"github.com/regiwitanto/auth-service/internal/domain"
+	"github.com/regiwitanto/auth-service/internal/pkg/logger"
 	"github.com/regiwitanto/auth-service/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -34,17 +35,29 @@ func NewAuthUseCase(
 }
 
 func (uc *authUseCase) Register(ctx context.Context, request *domain.RegisterRequest) (*domain.UserResponse, error) {
+	logger.Info("User registration attempt", 
+		logger.String("email", request.Email), 
+		logger.String("username", request.Username))
+		
 	existingUser, err := uc.userRepo.FindByEmail(ctx, request.Email)
 	if err == nil && existingUser != nil {
+		logger.Warn("Registration failed: email already exists", 
+			logger.String("email", request.Email))
 		return nil, errors.New("user with this email already exists")
 	}
 
 	existingUser, err = uc.userRepo.FindByUsername(ctx, request.Username)
 	if err == nil && existingUser != nil {
+		logger.Warn("Registration failed: username already exists", 
+			logger.String("username", request.Username))
 		return nil, errors.New("user with this username already exists")
 	}
+	
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
 	if err != nil {
+		logger.Error("Failed to hash password during registration", 
+			logger.String("email", request.Email), 
+			logger.Err(err))
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
@@ -61,42 +74,80 @@ func (uc *authUseCase) Register(ctx context.Context, request *domain.RegisterReq
 	}
 
 	if err := uc.userRepo.Create(ctx, user); err != nil {
+		logger.Error("Failed to create user in database", 
+			logger.String("email", request.Email), 
+			logger.Err(err))
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
+	
+	logger.Info("User registered successfully", 
+		logger.String("email", user.Email), 
+		logger.String("uuid", user.UUID))
+		
 	response := user.ToResponse()
 	return &response, nil
 }
 
 func (uc *authUseCase) Login(ctx context.Context, request *domain.LoginRequest) (*domain.TokenResponse, error) {
+	logger.Info("Login attempt", logger.String("email", request.Email))
+	
 	if ctx.Err() != nil {
+		logger.Warn("Login context error", 
+			logger.String("email", request.Email),
+			logger.Err(ctx.Err()))
 		return nil, ctx.Err()
 	}
 
 	user, err := uc.userRepo.FindByEmail(ctx, request.Email)
 	if err != nil {
+		logger.Warn("Login failed: user not found", 
+			logger.String("email", request.Email))
 		return nil, domain.ErrInvalidCredentials
 	}
 
 	if !user.Active {
+		logger.Warn("Login attempt for disabled account", 
+			logger.String("email", user.Email),
+			logger.String("uuid", user.UUID))
 		return nil, domain.ErrAccountDisabled
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(request.Password)); err != nil {
+		logger.Warn("Login failed: invalid password", 
+			logger.String("email", user.Email),
+			logger.String("uuid", user.UUID))
 		return nil, domain.ErrInvalidCredentials
 	}
+	
+	logger.Debug("Password verified successfully", logger.String("email", user.Email))
+	
 	accessToken, err := uc.generateAccessToken(user)
 	if err != nil {
+		logger.Error("Failed to generate access token", 
+			logger.String("email", user.Email),
+			logger.Err(err))
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
 	refreshToken, err := uc.generateRefreshToken(user)
 	if err != nil {
+		logger.Error("Failed to generate refresh token", 
+			logger.String("email", user.Email),
+			logger.Err(err))
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
 	if err := uc.tokenRepo.StoreRefreshToken(ctx, user.UUID, refreshToken, uc.config.JWT.RefreshTokenExp); err != nil {
+		logger.Error("Failed to store refresh token", 
+			logger.String("email", user.Email),
+			logger.String("uuid", user.UUID),
+			logger.Err(err))
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
+	
+	logger.Info("Login successful", 
+		logger.String("email", user.Email),
+		logger.String("uuid", user.UUID))
 
 	return &domain.TokenResponse{
 		AccessToken:  accessToken,
