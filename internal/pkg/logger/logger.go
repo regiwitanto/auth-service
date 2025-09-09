@@ -56,7 +56,7 @@ func Init(environment string) {
 		// Common settings
 		config.OutputPaths = []string{"stdout"}
 		config.ErrorOutputPaths = []string{"stderr"}
-		
+
 		var err error
 		Log, err = config.Build(
 			zap.AddCallerSkip(1), // Skip the wrapper function in the stack trace

@@ -26,17 +26,17 @@ func main() {
 		logger.Init("development")
 		logger.Fatal("Failed to load configuration", logger.Err(err))
 	}
-	
+
 	// Initialize logger with proper environment from config
 	logger.Init(cfg.Environment)
-	
-	logger.Info("Starting auth service", 
+
+	logger.Info("Starting auth service",
 		logger.String("environment", cfg.Environment),
 		logger.Int("port", cfg.Server.Port),
 		logger.String("version", "1.0.0"))
 
 	e := echo.New()
-	
+
 	// Configure Echo to use our structured logger
 	e.Logger.SetOutput(logger.NewEchoLogger())
 
