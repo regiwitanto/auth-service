@@ -22,7 +22,7 @@ func NewTokenRepository(redis RedisClient) TokenRepository {
 
 func (r *tokenRepository) StoreRefreshToken(ctx context.Context, userID string, token string, expiry time.Duration) error {
 	if ctx.Err() != nil {
-		logger.Warn("Context error when storing refresh token", 
+		logger.Warn("Context error when storing refresh token",
 			logger.String("user_id", userID),
 			logger.Err(ctx.Err()))
 		return ctx.Err()
@@ -46,7 +46,7 @@ func (r *tokenRepository) StoreRefreshToken(ctx context.Context, userID string, 
 		return fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
-	logger.Debug("Refresh token stored successfully", 
+	logger.Debug("Refresh token stored successfully",
 		logger.String("user_id", userID),
 		logger.String("expiry", expiry.String()))
 	return nil
@@ -57,7 +57,7 @@ func (r *tokenRepository) GetUserIDByRefreshToken(ctx context.Context, token str
 	userID, err := r.redis.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
-			logger.Info("Refresh token not found or expired", 
+			logger.Info("Refresh token not found or expired",
 				logger.String("token_key", key))
 			return "", errors.New("token not found or expired")
 		}
@@ -66,7 +66,7 @@ func (r *tokenRepository) GetUserIDByRefreshToken(ctx context.Context, token str
 			logger.Err(err))
 		return "", err
 	}
-	logger.Debug("User ID retrieved by refresh token", 
+	logger.Debug("User ID retrieved by refresh token",
 		logger.String("user_id", userID))
 	return userID, nil
 }
@@ -76,7 +76,7 @@ func (r *tokenRepository) DeleteRefreshToken(ctx context.Context, token string) 
 	userID, err := r.redis.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
-			logger.Debug("Refresh token already deleted or expired", 
+			logger.Debug("Refresh token already deleted or expired",
 				logger.String("token_key", key))
 			return nil // Token already gone, nothing to do
 		}
@@ -94,7 +94,7 @@ func (r *tokenRepository) DeleteRefreshToken(ctx context.Context, token string) 
 			logger.Err(err))
 		return err
 	}
-	
+
 	err = r.redis.Del(ctx, key).Err()
 	if err != nil {
 		logger.Error("Failed to delete refresh token key",
@@ -102,8 +102,8 @@ func (r *tokenRepository) DeleteRefreshToken(ctx context.Context, token string) 
 			logger.Err(err))
 		return err
 	}
-	
-	logger.Debug("Refresh token deleted successfully", 
+
+	logger.Debug("Refresh token deleted successfully",
 		logger.String("user_id", userID))
 	return nil
 }
@@ -113,7 +113,7 @@ func (r *tokenRepository) DeleteAllUserTokens(ctx context.Context, userID string
 	tokens, err := r.redis.SMembers(ctx, userTokensKey).Result()
 	if err != nil {
 		if err == redis.Nil {
-			logger.Debug("No tokens found for user", 
+			logger.Debug("No tokens found for user",
 				logger.String("user_id", userID))
 			return nil // No tokens to delete
 		}
@@ -123,8 +123,8 @@ func (r *tokenRepository) DeleteAllUserTokens(ctx context.Context, userID string
 		return err
 	}
 
-	logger.Info("Deleting all refresh tokens for user", 
-		logger.String("user_id", userID), 
+	logger.Info("Deleting all refresh tokens for user",
+		logger.String("user_id", userID),
 		logger.Int("token_count", len(tokens)))
 
 	pipe := r.redis.Pipeline()

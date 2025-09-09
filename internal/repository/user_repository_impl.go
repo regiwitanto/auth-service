@@ -22,13 +22,13 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	if err := r.db.WithContext(ctx).Create(user).Error; err != nil {
-		logger.Error("Failed to create user", 
+		logger.Error("Failed to create user",
 			logger.String("email", user.Email),
 			logger.String("username", user.Username),
 			logger.Err(err))
 		return err
 	}
-	logger.Info("User created successfully", 
+	logger.Info("User created successfully",
 		logger.String("email", user.Email),
 		logger.String("username", user.Username),
 		logger.String("uuid", user.UUID))
@@ -48,12 +48,12 @@ func (r *userRepository) FindByID(ctx context.Context, id uint) (*domain.User, e
 			logger.Info("User not found by ID", logger.Int("user_id", int(id)))
 			return nil, ErrUserNotFound
 		}
-		logger.Error("Database error when finding user by ID", 
+		logger.Error("Database error when finding user by ID",
 			logger.Int("user_id", int(id)),
 			logger.Err(err))
 		return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
 	}
-	logger.Debug("User found by ID", 
+	logger.Debug("User found by ID",
 		logger.Int("user_id", int(id)),
 		logger.String("email", user.Email))
 	return &user, nil
@@ -67,12 +67,12 @@ func (r *userRepository) FindByUUID(ctx context.Context, uuid string) (*domain.U
 			logger.Info("User not found by UUID", logger.String("uuid", uuid))
 			return nil, ErrUserNotFound
 		}
-		logger.Error("Database error when finding user by UUID", 
+		logger.Error("Database error when finding user by UUID",
 			logger.String("uuid", uuid),
 			logger.Err(err))
 		return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
 	}
-	logger.Debug("User found by UUID", 
+	logger.Debug("User found by UUID",
 		logger.String("uuid", uuid),
 		logger.String("email", user.Email))
 	return &user, nil
@@ -86,12 +86,12 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain
 			logger.Info("User not found by email", logger.String("email", email))
 			return nil, ErrUserNotFound
 		}
-		logger.Error("Database error when finding user by email", 
+		logger.Error("Database error when finding user by email",
 			logger.String("email", email),
 			logger.Err(err))
 		return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
 	}
-	logger.Debug("User found by email", 
+	logger.Debug("User found by email",
 		logger.String("email", email),
 		logger.String("uuid", user.UUID))
 	return &user, nil
@@ -105,12 +105,12 @@ func (r *userRepository) FindByUsername(ctx context.Context, username string) (*
 			logger.Info("User not found by username", logger.String("username", username))
 			return nil, errors.New("user not found")
 		}
-		logger.Error("Database error when finding user by username", 
+		logger.Error("Database error when finding user by username",
 			logger.String("username", username),
 			logger.Err(err))
 		return nil, err
 	}
-	logger.Debug("User found by username", 
+	logger.Debug("User found by username",
 		logger.String("username", username),
 		logger.String("email", user.Email))
 	return &user, nil
@@ -118,12 +118,12 @@ func (r *userRepository) FindByUsername(ctx context.Context, username string) (*
 
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	if err := r.db.WithContext(ctx).Save(user).Error; err != nil {
-		logger.Error("Failed to update user", 
+		logger.Error("Failed to update user",
 			logger.String("uuid", user.UUID),
 			logger.Err(err))
 		return err
 	}
-	logger.Info("User updated successfully", 
+	logger.Info("User updated successfully",
 		logger.String("uuid", user.UUID),
 		logger.String("email", user.Email))
 	return nil
