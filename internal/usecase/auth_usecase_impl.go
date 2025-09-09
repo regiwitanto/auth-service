@@ -34,74 +34,56 @@ func NewAuthUseCase(
 }
 
 func (uc *authUseCase) Register(ctx context.Context, request *domain.RegisterRequest) (*domain.UserResponse, error) {
-	// Check if user with the same email already exists
 	existingUser, err := uc.userRepo.FindByEmail(ctx, request.Email)
 	if err == nil && existingUser != nil {
 		return nil, errors.New("user with this email already exists")
 	}
 
-	// Check if user with the same username already exists
 	existingUser, err = uc.userRepo.FindByUsername(ctx, request.Username)
 	if err == nil && existingUser != nil {
 		return nil, errors.New("user with this username already exists")
 	}
-
-	// Hash the password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Create a new user
 	user := &domain.User{
 		Email:     request.Email,
 		Username:  request.Username,
 		Password:  string(hashedPassword),
 		FirstName: request.FirstName,
 		LastName:  request.LastName,
-		Role:      "user", // Default role
+		Role:      "user",
 		Active:    true,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
-	// Save to database
 	if err := uc.userRepo.Create(ctx, user); err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
-
-	// Return the user without sensitive data
 	response := user.ToResponse()
 	return &response, nil
 }
 
-// Login authenticates a user and returns JWT tokens
 func (uc *authUseCase) Login(ctx context.Context, request *domain.LoginRequest) (*domain.TokenResponse, error) {
-	// Check if context is already cancelled
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 
-	// Find user by email
 	user, err := uc.userRepo.FindByEmail(ctx, request.Email)
 	if err != nil {
-		// Don't leak information about whether the email exists
 		return nil, domain.ErrInvalidCredentials
 	}
 
-	// Check if user is active
 	if !user.Active {
 		return nil, domain.ErrAccountDisabled
 	}
 
-	// Verify password with constant-time comparison
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(request.Password)); err != nil {
-		// Log the error type but return a generic message
-		// This helps with debugging without leaking information
 		return nil, domain.ErrInvalidCredentials
 	}
-
-	// Generate tokens
 	accessToken, err := uc.generateAccessToken(user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
@@ -125,26 +107,20 @@ func (uc *authUseCase) Login(ctx context.Context, request *domain.LoginRequest) 
 	}, nil
 }
 
-// RefreshToken refreshes an access token using a valid refresh token
 func (uc *authUseCase) RefreshToken(ctx context.Context, request *domain.RefreshTokenRequest) (*domain.TokenResponse, error) {
-	// Verify refresh token in Redis
 	userID, err := uc.tokenRepo.GetUserIDByRefreshToken(ctx, request.RefreshToken)
 	if err != nil {
 		return nil, errors.New("invalid or expired refresh token")
 	}
 
-	// Find user by UUID
 	user, err := uc.userRepo.FindByUUID(ctx, userID)
 	if err != nil {
 		return nil, errors.New("user not found")
 	}
 
-	// Check if user is active
 	if !user.Active {
 		return nil, errors.New("account is disabled")
 	}
-
-	// Generate new tokens
 	accessToken, err := uc.generateAccessToken(user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
@@ -155,12 +131,9 @@ func (uc *authUseCase) RefreshToken(ctx context.Context, request *domain.Refresh
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	// Delete old refresh token
 	if err := uc.tokenRepo.DeleteRefreshToken(ctx, request.RefreshToken); err != nil {
 		return nil, fmt.Errorf("failed to delete old refresh token: %w", err)
 	}
-
-	// Store new refresh token in Redis
 	if err := uc.tokenRepo.StoreRefreshToken(ctx, user.UUID, refreshToken, uc.config.JWT.RefreshTokenExp); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
@@ -173,12 +146,10 @@ func (uc *authUseCase) RefreshToken(ctx context.Context, request *domain.Refresh
 	}, nil
 }
 
-// Logout invalidates the user's refresh token
 func (uc *authUseCase) Logout(ctx context.Context, token string) error {
 	return uc.tokenRepo.DeleteRefreshToken(ctx, token)
 }
 
-// GetUserProfile gets the user profile from a JWT token
 func (uc *authUseCase) GetUserProfile(ctx context.Context, userID string) (*domain.UserResponse, error) {
 	// Find user by UUID
 	user, err := uc.userRepo.FindByUUID(ctx, userID)
@@ -191,7 +162,6 @@ func (uc *authUseCase) GetUserProfile(ctx context.Context, userID string) (*doma
 	return &response, nil
 }
 
-// VerifyToken verifies if a JWT token is valid and returns the claims
 func (uc *authUseCase) VerifyToken(tokenString string) (map[string]interface{}, error) {
 	// Parse the token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
@@ -226,9 +196,6 @@ func (uc *authUseCase) VerifyToken(tokenString string) (map[string]interface{}, 
 	return claimsMap, nil
 }
 
-// Helper methods
-
-// generateAccessToken generates a new JWT access token
 func (uc *authUseCase) generateAccessToken(user *domain.User) (string, error) {
 	// Set claims
 	claims := jwt.MapClaims{
@@ -252,7 +219,6 @@ func (uc *authUseCase) generateAccessToken(user *domain.User) (string, error) {
 	return tokenString, nil
 }
 
-// generateRefreshToken generates a new JWT refresh token
 func (uc *authUseCase) generateRefreshToken(user *domain.User) (string, error) {
 	// Set claims
 	claims := jwt.MapClaims{
@@ -273,7 +239,6 @@ func (uc *authUseCase) generateRefreshToken(user *domain.User) (string, error) {
 	return tokenString, nil
 }
 
-// Generate a secure random token
 func (uc *authUseCase) generateSecureToken(length int) (string, error) {
 	b := make([]byte, length)
 	_, err := rand.Read(b)
@@ -283,7 +248,6 @@ func (uc *authUseCase) generateSecureToken(length int) (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-// ForgotPassword initiates the password reset flow
 func (uc *authUseCase) ForgotPassword(ctx context.Context, request *domain.ForgotPasswordRequest) error {
 	// Check if user exists with the provided email
 	user, err := uc.userRepo.FindByEmail(ctx, request.Email)
@@ -313,7 +277,6 @@ func (uc *authUseCase) ForgotPassword(ctx context.Context, request *domain.Forgo
 	return nil
 }
 
-// ResetPassword completes the password reset flow
 func (uc *authUseCase) ResetPassword(ctx context.Context, request *domain.ResetPasswordRequest) error {
 	// Verify the token and get the associated email
 	email, err := uc.tokenRepo.GetEmailByResetToken(ctx, request.Token)

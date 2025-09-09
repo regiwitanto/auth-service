@@ -17,35 +17,29 @@ import (
 	"github.com/regiwitanto/auth-service/internal/usecase"
 )
 
-// initLogger creates and configures a logger for the application
 func initLogger() *log.Logger {
 	return log.New(os.Stdout, "[AUTH-SERVICE] ", log.LstdFlags|log.Lshortfile)
 }
 
 func main() {
-	// Initialize logger
 	logger := initLogger()
 
-	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		logger.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Initialize Echo framework
 	e := echo.New()
 
-	// Setup middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	// Setup CORS with more restrictive settings
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:     []string{"https://*.example.com", "http://localhost:*"},
 		AllowMethods:     []string{echo.GET, echo.PUT, echo.POST, echo.DELETE, echo.OPTIONS},
 		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 		AllowCredentials: true,
-		MaxAge:           300, // Maximum cache time for pre-flight responses (5 minutes)
+		MaxAge:           300,
 	}))
 
 	// Add security headers
@@ -63,7 +57,6 @@ func main() {
 		}
 	})
 
-	// Initialize database and Redis with graceful error handling
 	db, err := config.InitDB(cfg)
 	if err != nil {
 		logger.Fatalf("Failed to connect to database: %v", err)
@@ -74,24 +67,18 @@ func main() {
 		logger.Fatalf("Failed to connect to Redis: %v", err)
 	}
 
-	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
 	tokenRepo := repository.NewTokenRepository(redisClient)
 
-	// Initialize use cases
 	authUseCase := usecase.NewAuthUseCase(userRepo, tokenRepo, cfg)
 
-	// Initialize handlers
 	healthHandler := handler.NewHealthHandler()
 	authHandler := handler.NewAuthHandler(authUseCase, &cfg)
 	adminHandler := handler.NewAdminHandler(authUseCase, &cfg)
 
-	// Register routes for each handler
 	healthHandler.RegisterRoutes(e)
 	authHandler.RegisterRoutes(e)
 	adminHandler.RegisterRoutes(e)
-
-	// Start server with graceful shutdown
 	go func() {
 		if err := e.Start(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {
 			logger.Printf("Shutting down the server: %v", err)

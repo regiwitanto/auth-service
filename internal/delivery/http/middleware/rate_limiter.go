@@ -35,32 +35,29 @@ type RateLimiter struct {
 	cleanupInterval time.Duration
 }
 
-// NewRateLimiter creates a new rate limiter middleware with default config
 func NewRateLimiter() *RateLimiter {
 	config := DefaultRateLimiterConfig()
 	rl := &RateLimiter{
 		limiters:        make(map[string]*rate.Limiter),
 		lastSeen:        make(map[string]time.Time),
 		config:          config,
-		cleanupInterval: time.Hour, // Run cleanup every hour
+		cleanupInterval: time.Hour,
 	}
 	go rl.cleanupTask()
 	return rl
 }
 
-// NewRateLimiterWithConfig creates a new rate limiter with custom config
 func NewRateLimiterWithConfig(config RateLimiterConfig) *RateLimiter {
 	rl := &RateLimiter{
 		limiters:        make(map[string]*rate.Limiter),
 		lastSeen:        make(map[string]time.Time),
 		config:          config,
-		cleanupInterval: time.Hour, // Run cleanup every hour
+		cleanupInterval: time.Hour,
 	}
 	go rl.cleanupTask()
 	return rl
 }
 
-// cleanupTask periodically removes stale limiters to prevent memory leaks
 func (rl *RateLimiter) cleanupTask() {
 	ticker := time.NewTicker(rl.cleanupInterval)
 	defer ticker.Stop()
@@ -70,12 +67,11 @@ func (rl *RateLimiter) cleanupTask() {
 	}
 }
 
-// cleanup removes limiters that haven't been used for a while
 func (rl *RateLimiter) cleanup() {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	threshold := time.Now().Add(-24 * time.Hour) // Remove limiters not seen in 24 hours
+	threshold := time.Now().Add(-24 * time.Hour)
 
 	for id, lastSeen := range rl.lastSeen {
 		if lastSeen.Before(threshold) {
@@ -85,7 +81,6 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
-// getLimiter returns the rate limiter for a particular identifier (IP, user ID, etc.)
 func (rl *RateLimiter) getLimiter(identifier string) *rate.Limiter {
 	rl.mu.RLock()
 	limiter, exists := rl.limiters[identifier]
@@ -109,13 +104,11 @@ func (rl *RateLimiter) getLimiter(identifier string) *rate.Limiter {
 	return limiter
 }
 
-// getIdentifier extracts the identifier for rate limiting based on the strategy
 func (rl *RateLimiter) getIdentifier(c echo.Context) string {
 	switch rl.config.Strategy {
 	case "ip":
 		return c.RealIP()
 	case "user":
-		// Get the user ID from the JWT token if available
 		if user := c.Get("user"); user != nil {
 			if token, ok := user.(*jwt.Token); ok {
 				if claims, ok := token.Claims.(jwt.MapClaims); ok {
@@ -125,7 +118,6 @@ func (rl *RateLimiter) getIdentifier(c echo.Context) string {
 				}
 			}
 		}
-		// Fall back to IP if user ID is not available
 		return c.RealIP()
 	case "global":
 		return "global"
@@ -134,7 +126,6 @@ func (rl *RateLimiter) getIdentifier(c echo.Context) string {
 	}
 }
 
-// Limit returns a middleware function that applies rate limiting
 func (rl *RateLimiter) Limit() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -142,9 +133,7 @@ func (rl *RateLimiter) Limit() echo.MiddlewareFunc {
 			limiter := rl.getLimiter(identifier)
 
 			if !limiter.Allow() {
-				// Get the current limit information
 				limit := limiter.Limit()
-				// Convert to requests per minute for a more user-friendly message
 				ratePerMinute := int(float64(limit) * 60)
 
 				return echo.NewHTTPError(
@@ -158,17 +147,10 @@ func (rl *RateLimiter) Limit() echo.MiddlewareFunc {
 	}
 }
 
-// LimitRoute applies rate limiting to a specific route
 func (rl *RateLimiter) LimitRoute(config RateLimiterConfig) echo.MiddlewareFunc {
 	routeLimiter := NewRateLimiterWithConfig(config)
 	return routeLimiter.Limit()
 }
 
-// CleanupTask periodically cleans up inactive limiters
-// This should be called in a goroutine
 func (rl *RateLimiter) CleanupTask(interval time.Duration, maxIdleTime time.Duration) {
-	// Implementation not essential for MVP, but would involve:
-	// 1. Keeping track of when each limiter was last accessed
-	// 2. Periodically checking and removing limiters that haven't been used
-	// 3. This prevents memory leaks from many unique identifiers
 }

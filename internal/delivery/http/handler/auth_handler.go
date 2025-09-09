@@ -32,17 +32,13 @@ func NewAuthHandler(authUseCase usecase.AuthUseCase, cfg *config.Config) *AuthHa
 	}
 }
 
-// RegisterRoutes registers all the auth related routes
 func (h *AuthHandler) RegisterRoutes(e *echo.Echo) {
 	api := e.Group("/api/v1")
 	auth := api.Group("/auth")
 
-	// Setup rate limiters
 	var authRateLimiter, loginRateLimiter *customMiddleware.RateLimiter
 
-	// Configure rate limiters based on environment
 	if !h.config.RateLimit.Enabled || h.config.Environment == "development" {
-		// In development mode or when rate limiting is disabled, use very permissive settings
 		authRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
 			Requests:  1000,
 			Window:    time.Minute,
@@ -57,7 +53,6 @@ func (h *AuthHandler) RegisterRoutes(e *echo.Echo) {
 			Strategy:  "ip",
 		})
 	} else {
-		// In production, use the configured settings
 		authRateLimiter = customMiddleware.NewRateLimiterWithConfig(customMiddleware.RateLimiterConfig{
 			Requests:  h.config.RateLimit.APIRequestsPerMin,
 			Window:    time.Minute,
@@ -73,7 +68,6 @@ func (h *AuthHandler) RegisterRoutes(e *echo.Echo) {
 		})
 	}
 
-	// Register auth routes with appropriate rate limiters
 	if h.config.RateLimit.Enabled {
 		auth.POST("/register", h.Register, authRateLimiter.Limit())
 		auth.POST("/login", h.Login, loginRateLimiter.Limit())
@@ -90,21 +84,14 @@ func (h *AuthHandler) RegisterRoutes(e *echo.Echo) {
 		auth.POST("/reset-password", h.ResetPassword)
 	}
 
-	// We'll use our custom JWT validator instead of the echojwt middleware
-
-	// Create a custom JWT validator middleware
 	jwtValidator := customMiddleware.NewJWTValidatorMiddleware(h.config)
 
-	// User routes
 	user := api.Group("/user")
-
-	// Use our custom validator instead of the default JWT middleware
 	user.Use(jwtValidator.ValidateToken())
 	user.Use(h.rbacMiddleware.IsUser())
 	user.GET("/me", h.GetUserProfile)
 }
 
-// Register handles user registration
 func (h *AuthHandler) Register(c echo.Context) error {
 	var request domain.RegisterRequest
 	if err := c.Bind(&request); err != nil {
@@ -113,14 +100,12 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		})
 	}
 
-	// Validate the request
 	if err := h.validator.Struct(request); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Validation failed: " + err.Error(),
 		})
 	}
 
-	// Call the use case
 	response, err := h.authUseCase.Register(c.Request().Context(), &request)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -131,9 +116,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	return c.JSON(http.StatusCreated, response)
 }
 
-// Login handles user login
 func (h *AuthHandler) Login(c echo.Context) error {
-	// Create a context with timeout for the login operation
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
 	defer cancel()
 
@@ -145,10 +128,7 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		})
 	}
 
-	// Sanitize inputs
 	request.Email = strings.TrimSpace(request.Email)
-
-	// Validate the request
 	if err := h.validator.Struct(request); err != nil {
 		// Extract validation errors for better user feedback
 		validationErrors := []map[string]interface{}{}
@@ -198,7 +178,6 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-// RefreshToken handles token refresh
 func (h *AuthHandler) RefreshToken(c echo.Context) error {
 	var request domain.RefreshTokenRequest
 	if err := c.Bind(&request); err != nil {
@@ -225,7 +204,6 @@ func (h *AuthHandler) RefreshToken(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-// Logout handles user logout
 func (h *AuthHandler) Logout(c echo.Context) error {
 	// Extract the refresh token from the request
 	var request domain.RefreshTokenRequest
@@ -247,7 +225,6 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 	})
 }
 
-// GetUserProfile handles retrieving the user profile
 func (h *AuthHandler) GetUserProfile(c echo.Context) error {
 	// Extract user ID from JWT token
 	userID, err := h.extractUserID(c)
@@ -268,7 +245,6 @@ func (h *AuthHandler) GetUserProfile(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-// ForgotPassword initiates the password reset process
 func (h *AuthHandler) ForgotPassword(c echo.Context) error {
 	var request domain.ForgotPasswordRequest
 	if err := c.Bind(&request); err != nil {
@@ -298,7 +274,6 @@ func (h *AuthHandler) ForgotPassword(c echo.Context) error {
 	})
 }
 
-// ResetPassword resets the user's password
 func (h *AuthHandler) ResetPassword(c echo.Context) error {
 	var request domain.ResetPasswordRequest
 	if err := c.Bind(&request); err != nil {
@@ -326,9 +301,6 @@ func (h *AuthHandler) ResetPassword(c echo.Context) error {
 	})
 }
 
-// Helper methods
-
-// extractUserID extracts the user ID from the JWT token
 func (h *AuthHandler) extractUserID(c echo.Context) (string, error) {
 	// Get the token from the context (set by JWT middleware)
 	// First check if the userID has been directly set (for tests)
