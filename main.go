@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,25 +12,36 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/regiwitanto/auth-service/config"
 	"github.com/regiwitanto/auth-service/internal/delivery/http/handler"
+	customMiddleware "github.com/regiwitanto/auth-service/internal/delivery/http/middleware"
+	"github.com/regiwitanto/auth-service/internal/pkg/logger"
 	"github.com/regiwitanto/auth-service/internal/repository"
 	"github.com/regiwitanto/auth-service/internal/usecase"
 )
 
-func initLogger() *log.Logger {
-	return log.New(os.Stdout, "[AUTH-SERVICE] ", log.LstdFlags|log.Lshortfile)
-}
-
 func main() {
-	logger := initLogger()
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		logger.Fatalf("Failed to load configuration: %v", err)
+		// Initialize logger with default environment before config is available
+		logger.Init("development")
+		logger.Fatal("Failed to load configuration", logger.Err(err))
 	}
+	
+	// Initialize logger with proper environment from config
+	logger.Init(cfg.Environment)
+	
+	logger.Info("Starting auth service", 
+		logger.String("environment", cfg.Environment),
+		logger.Int("port", cfg.Server.Port),
+		logger.String("version", "1.0.0"))
 
 	e := echo.New()
+	
+	// Configure Echo to use our structured logger
+	e.Logger.SetOutput(logger.NewEchoLogger())
 
-	e.Use(middleware.Logger())
+	// Use our custom Zap logger middleware instead of the default Echo logger
+	e.Use(customMiddleware.ZapLoggerMiddleware())
 	e.Use(middleware.Recover())
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -59,12 +69,12 @@ func main() {
 
 	db, err := config.InitDB(cfg)
 	if err != nil {
-		logger.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatal("Failed to connect to database", logger.Err(err))
 	}
 
 	redisClient, err := config.InitRedis(cfg)
 	if err != nil {
-		logger.Fatalf("Failed to connect to Redis: %v", err)
+		logger.Fatal("Failed to connect to Redis", logger.Err(err))
 	}
 
 	userRepo := repository.NewUserRepository(db)
@@ -81,7 +91,7 @@ func main() {
 	adminHandler.RegisterRoutes(e)
 	go func() {
 		if err := e.Start(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {
-			logger.Printf("Shutting down the server: %v", err)
+			logger.Info("Shutting down the server", logger.Err(err))
 		}
 	}()
 
@@ -94,8 +104,8 @@ func main() {
 	defer cancel()
 
 	if err := e.Shutdown(ctx); err != nil {
-		logger.Fatalf("Server forced to shutdown: %v", err)
+		logger.Fatal("Server forced to shutdown", logger.Err(err))
 	}
 
-	logger.Println("Server gracefully stopped")
+	logger.Info("Server gracefully stopped")
 }
