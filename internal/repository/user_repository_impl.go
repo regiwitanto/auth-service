@@ -149,3 +149,20 @@ func (r *userRepository) UpdatePassword(ctx context.Context, email string, hashe
 
 	return nil
 }
+
+func (r *userRepository) Ping(ctx context.Context) error {
+	// Use GORM's DB connection
+	db, err := r.db.DB()
+	if err != nil {
+		logger.Error("Failed to get database connection", logger.Err(err))
+		return err
+	}
+
+	// Try pinging the database
+	if err := db.PingContext(ctx); err != nil {
+		logger.Error("Database ping failed", logger.Err(err))
+		return err
+	}
+
+	return nil
+}

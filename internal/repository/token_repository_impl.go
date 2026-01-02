@@ -8,6 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/regiwitanto/auth-service/internal/pkg/logger"
+	"github.com/regiwitanto/auth-service/internal/pkg/metrics"
 )
 
 type tokenRepository struct {
@@ -158,4 +159,32 @@ func (r *tokenRepository) GetEmailByResetToken(ctx context.Context, token string
 func (r *tokenRepository) DeletePasswordResetToken(ctx context.Context, token string) error {
 	key := fmt.Sprintf("password_reset:%s", token)
 	return r.redis.Del(ctx, key).Err()
+}
+
+func (r *tokenRepository) GetTokenCount(ctx context.Context) (int64, error) {
+	// Count tokens by getting Redis keys for refresh tokens
+	// This is for metrics/monitoring purposes
+
+	// In production, consider using more efficient ways to count tokens
+	// like keeping a separate counter in Redis that's updated when tokens are added/removed
+
+	keys, err := r.redis.Keys(ctx, "refresh_token:*").Result()
+	if err != nil {
+		logger.Error("Failed to get Redis token count", logger.Err(err))
+		return 0, err
+	}
+
+	// Update metrics
+	metrics.ActiveTokensGauge.Set(float64(len(keys)))
+
+	return int64(len(keys)), nil
+}
+
+func (r *tokenRepository) Ping(ctx context.Context) error {
+	status := r.redis.Ping(ctx)
+	if status.Err() != nil {
+		logger.Error("Redis ping failed", logger.Err(status.Err()))
+		return status.Err()
+	}
+	return nil
 }

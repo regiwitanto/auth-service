@@ -15,4 +15,5 @@ type UserRepository interface {
 	Update(ctx context.Context, user *domain.User) error
 	Delete(ctx context.Context, id uint) error
 	UpdatePassword(ctx context.Context, email string, hashedPassword string) error
+	Ping(ctx context.Context) error
 }

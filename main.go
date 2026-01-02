@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/regiwitanto/auth-service/internal/delivery/http/handler"
 	customMiddleware "github.com/regiwitanto/auth-service/internal/delivery/http/middleware"
 	"github.com/regiwitanto/auth-service/internal/pkg/logger"
+	"github.com/regiwitanto/auth-service/internal/pkg/metrics"
 	"github.com/regiwitanto/auth-service/internal/repository"
 	"github.com/regiwitanto/auth-service/internal/usecase"
 )
@@ -42,6 +44,10 @@ func main() {
 
 	// Use our custom Zap logger middleware instead of the default Echo logger
 	e.Use(customMiddleware.ZapLoggerMiddleware())
+
+	// Add Prometheus metrics middleware for all requests
+	e.Use(customMiddleware.PrometheusMiddleware())
+
 	e.Use(middleware.Recover())
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -77,18 +83,52 @@ func main() {
 		logger.Fatal("Failed to connect to Redis", logger.Err(err))
 	}
 
+	// Initialize repositories with monitoring
 	userRepo := repository.NewUserRepository(db)
 	tokenRepo := repository.NewTokenRepository(redisClient)
 
+	// Set initial system metrics
+	metrics.SystemGauges.WithLabelValues("goroutines").Set(float64(runtime.NumGoroutine()))
+	metrics.SystemGauges.WithLabelValues("cpu_cores").Set(float64(runtime.NumCPU()))
+
+	// Schedule periodic collection of token metrics
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				count, err := tokenRepo.GetTokenCount(context.Background())
+				if err != nil {
+					logger.Error("Failed to get token count", logger.Err(err))
+				} else {
+					metrics.ActiveTokensGauge.Set(float64(count))
+				}
+
+				// Update system metrics
+				metrics.SystemGauges.WithLabelValues("goroutines").Set(float64(runtime.NumGoroutine()))
+
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				metrics.SystemGauges.WithLabelValues("memory_alloc_bytes").Set(float64(m.Alloc))
+				metrics.SystemGauges.WithLabelValues("memory_sys_bytes").Set(float64(m.Sys))
+			}
+		}
+	}()
+
 	authUseCase := usecase.NewAuthUseCase(userRepo, tokenRepo, cfg)
 
-	healthHandler := handler.NewHealthHandler()
+	// Initialize handlers
+	healthHandler := handler.NewHealthHandler(userRepo, redisClient, &cfg)
 	authHandler := handler.NewAuthHandler(authUseCase, &cfg)
 	adminHandler := handler.NewAdminHandler(authUseCase, &cfg)
+	metricsHandler := handler.NewMetricsHandler()
 
 	healthHandler.RegisterRoutes(e)
 	authHandler.RegisterRoutes(e)
 	adminHandler.RegisterRoutes(e)
+	metricsHandler.RegisterRoutes(e) // Register metrics endpoint
 	go func() {
 		if err := e.Start(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {
 			logger.Info("Shutting down the server", logger.Err(err))

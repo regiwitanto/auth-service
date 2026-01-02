@@ -15,6 +15,9 @@ type RedisClient interface {
 	SRem(ctx context.Context, key string, members ...interface{}) *redis.IntCmd
 	SMembers(ctx context.Context, key string) *redis.StringSliceCmd
 	Pipeline() redis.Pipeliner
+	Ping(ctx context.Context) *redis.StatusCmd
+	Scan(ctx context.Context, cursor uint64, match string, count int64) *redis.ScanCmd
+	Keys(ctx context.Context, pattern string) *redis.StringSliceCmd
 }
 
 type TokenRepository interface {
@@ -25,4 +28,6 @@ type TokenRepository interface {
 	StorePasswordResetToken(ctx context.Context, email string, token string, expiry time.Duration) error
 	GetEmailByResetToken(ctx context.Context, token string) (string, error)
 	DeletePasswordResetToken(ctx context.Context, token string) error
+	GetTokenCount(ctx context.Context) (int64, error)
+	Ping(ctx context.Context) error
 }
